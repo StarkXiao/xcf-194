@@ -840,12 +840,12 @@ export class GameScene extends Phaser.Scene {
 
     const panelBg = this.add.graphics();
     panelBg.fillStyle(0x1e1b4b, 0.97);
-    panelBg.fillRoundedRect(-350, -140, 700, 280, 22);
+    panelBg.fillRoundedRect(-350, -180, 700, 360, 22);
     panelBg.lineStyle(3, 0xfbbf24, 0.8);
-    panelBg.strokeRoundedRect(-350, -140, 700, 280, 22);
+    panelBg.strokeRoundedRect(-350, -180, 700, 360, 22);
     this.mutationPanel.add(panelBg);
 
-    const title = this.add.text(0, -115, '🧬 异变配方 · 同阶异色融合', {
+    const title = this.add.text(0, -155, '🧬 异变配方 · 同阶异色融合', {
       fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
       fontSize: '22px',
       color: '#fde68a',
@@ -853,55 +853,119 @@ export class GameScene extends Phaser.Scene {
     }).setOrigin(0.5);
     this.mutationPanel.add(title);
 
-    const subtitle = this.add.text(0, -88, '同阶不同属性花瓣各1 → 异变品种(升阶)', {
+    const subtitle = this.add.text(0, -128, '同阶·主色(决定产出) + 辅色(决定品种) → 异变品种(升阶)', {
       fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
-      fontSize: '16px',
+      fontSize: '14px',
       color: '#a78bfa'
     }).setOrigin(0.5);
     this.mutationPanel.add(subtitle);
 
+    const recipeContainer = this.add.container(0, -70);
+    const recipes = [
+      { primary: 'pink', secondary: 'gold', output: '烈焰粉', emoji: '🔥', color: 0xff9ec4 },
+      { primary: 'blue', secondary: 'purple', output: '寒霜蓝', emoji: '❄️', color: 0x7dd3fc },
+      { primary: 'purple', secondary: 'blue', output: '暗影紫', emoji: '🌑', color: 0xc084fc },
+      { primary: 'pink', secondary: 'blue', output: '自然粉', emoji: '🌿', color: 0xff9ec4 },
+      { primary: 'gold', secondary: 'purple', output: '烈焰金', emoji: '🔥', color: 0xfcd34d },
+      { primary: 'gold', secondary: 'pink', output: '自然金', emoji: '🌿', color: 0xfcd34d },
+    ];
+
+    recipes.forEach((recipe, i) => {
+      const rowY = Math.floor(i / 3) * 50;
+      const colX = (i % 3 - 1) * 220;
+
+      const rowBg = this.add.graphics();
+      rowBg.fillStyle(0x312e81, 0.5);
+      rowBg.fillRoundedRect(colX - 100, rowY - 20, 200, 40, 10);
+      rowBg.lineStyle(1, recipe.color, 0.5);
+      rowBg.strokeRoundedRect(colX - 100, rowY - 20, 200, 40, 10);
+      recipeContainer.add(rowBg);
+
+      const primaryDot = this.add.graphics();
+      primaryDot.fillStyle(recipe.color, 1);
+      primaryDot.fillCircle(colX - 70, rowY, 10);
+      recipeContainer.add(primaryDot);
+
+      const plusText = this.add.text(colX - 45, rowY, '+', {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '14px',
+        color: '#a78bfa'
+      }).setOrigin(0.5);
+      recipeContainer.add(plusText);
+
+      const secondaryDot = this.add.graphics();
+      const secondaryColor = recipe.secondary === 'gold' ? 0xfcd34d :
+                           recipe.secondary === 'purple' ? 0xc084fc :
+                           recipe.secondary === 'blue' ? 0x7dd3fc :
+                           recipe.secondary === 'pink' ? 0xff9ec4 : 0xffffff;
+      secondaryDot.fillStyle(secondaryColor, 1);
+      secondaryDot.fillCircle(colX - 20, rowY, 10);
+      recipeContainer.add(secondaryDot);
+
+      const arrowText = this.add.text(colX + 10, rowY, '→', {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '14px',
+        color: '#a78bfa'
+      }).setOrigin(0.5);
+      recipeContainer.add(arrowText);
+
+      const emojiText = this.add.text(colX + 45, rowY, recipe.emoji, {
+        fontSize: '16px'
+      }).setOrigin(0.5);
+      recipeContainer.add(emojiText);
+
+      const nameText = this.add.text(colX + 75, rowY, recipe.output, {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '13px',
+        color: '#fef3c7',
+        fontStyle: 'bold'
+      }).setOrigin(0.5);
+      recipeContainer.add(nameText);
+    });
+    this.mutationPanel.add(recipeContainer);
+
     const variants: PetalVariant[] = ['flame', 'frost', 'shadow', 'nature'];
     variants.forEach((variant, i) => {
       const slotX = -240 + i * 160;
-      const slotY = -20;
+      const slotY = 50;
       const slot = this.add.container(slotX, slotY);
 
       const slotBg = this.add.graphics();
       const variantColor = PETAL_VARIANT_COLOR_MAP[variant];
       slotBg.fillStyle(0x312e81, 0.7);
-      slotBg.fillRoundedRect(-70, -50, 140, 100, 14);
+      slotBg.fillRoundedRect(-70, -40, 140, 80, 14);
       slotBg.lineStyle(2, variantColor, 0.6);
-      slotBg.strokeRoundedRect(-70, -50, 140, 100, 14);
+      slotBg.strokeRoundedRect(-70, -40, 140, 80, 14);
       slot.add(slotBg);
       slot.setData('bg', slotBg);
 
-      const emoji = this.add.text(0, -30, PETAL_VARIANT_EMOJI[variant], {
-        fontSize: '28px'
+      const emoji = this.add.text(0, -15, PETAL_VARIANT_EMOJI[variant], {
+        fontSize: '24px'
       }).setOrigin(0.5);
       slot.add(emoji);
 
       const nameText = this.add.text(0, 10, PETAL_VARIANT_NAMES[variant], {
         fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
-        fontSize: '18px',
+        fontSize: '16px',
         color: '#fef3c7',
         fontStyle: 'bold'
       }).setOrigin(0.5);
       slot.add(nameText);
 
-      const countText = this.add.text(0, 35, '×0', {
+      const countText = this.add.text(0, 30, '×0', {
         fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
-        fontSize: '16px',
+        fontSize: '14px',
         color: '#a78bfa'
       }).setOrigin(0.5);
       slot.add(countText);
       slot.setData('countText', countText);
 
-      slot.setSize(140, 100);
+      slot.setSize(140, 80);
       this.variantSlots.set(variant, slot);
       this.mutationPanel.add(slot);
     });
 
-    const oneClickBtn = this.add.container(0, 110);
+    const oneClickBtn = this.add.container(0, 140);
     const clickBg = this.add.graphics();
     clickBg.fillStyle(0x9333ea, 0.9);
     clickBg.fillRoundedRect(-100, -22, 200, 44, 22);
@@ -922,7 +986,7 @@ export class GameScene extends Phaser.Scene {
     oneClickBtn.on('pointerdown', () => this.onMutateAllClick());
     this.mutationPanel.add(oneClickBtn);
 
-    const closeBtn = this.add.container(330, -120);
+    const closeBtn = this.add.container(330, -160);
     const closeBg = this.add.graphics();
     closeBg.fillStyle(0x4c1d95, 0.9);
     closeBg.fillCircle(0, 0, 18);

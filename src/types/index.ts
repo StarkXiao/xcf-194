@@ -22,7 +22,8 @@ export interface InventoryItem {
 }
 
 export interface MutationRecipe {
-  inputs: { tier: PetalTier; color: PetalColor; count: number }[];
+  primaryColor: PetalColor;
+  secondaryColor: PetalColor;
   output: { tier: PetalTier; color: PetalColor; variant: PetalVariant; count: number };
   name: string;
 }
@@ -190,39 +191,46 @@ export const PETAL_VARIANT_EMOJI: Record<PetalVariant, string> = {
 };
 
 export const MUTATION_RECIPES_CONFIG: {
-  inputs: { color: PetalColor; count: number }[];
+  primaryColor: PetalColor;
+  secondaryColor: PetalColor;
   output: { color: PetalColor; variant: PetalVariant };
   name: string;
 }[] = [
   {
-    inputs: [{ color: 'pink', count: 1 }, { color: 'gold', count: 1 }],
+    primaryColor: 'pink',
+    secondaryColor: 'gold',
     output: { color: 'pink', variant: 'flame' },
-    name: '粉+金 → 烈焰粉'
+    name: '粉(主) + 金(辅) → 烈焰粉'
   },
   {
-    inputs: [{ color: 'blue', count: 1 }, { color: 'purple', count: 1 }],
+    primaryColor: 'blue',
+    secondaryColor: 'purple',
     output: { color: 'blue', variant: 'frost' },
-    name: '蓝+紫 → 寒霜蓝'
+    name: '蓝(主) + 紫(辅) → 寒霜蓝'
   },
   {
-    inputs: [{ color: 'purple', count: 1 }, { color: 'blue', count: 1 }],
+    primaryColor: 'purple',
+    secondaryColor: 'blue',
     output: { color: 'purple', variant: 'shadow' },
-    name: '紫+蓝 → 暗影紫'
+    name: '紫(主) + 蓝(辅) → 暗影紫'
   },
   {
-    inputs: [{ color: 'pink', count: 1 }, { color: 'blue', count: 1 }],
+    primaryColor: 'pink',
+    secondaryColor: 'blue',
     output: { color: 'pink', variant: 'nature' },
-    name: '粉+蓝 → 自然粉'
+    name: '粉(主) + 蓝(辅) → 自然粉'
   },
   {
-    inputs: [{ color: 'gold', count: 1 }, { color: 'purple', count: 1 }],
+    primaryColor: 'gold',
+    secondaryColor: 'purple',
     output: { color: 'gold', variant: 'flame' },
-    name: '金+紫 → 烈焰金'
+    name: '金(主) + 紫(辅) → 烈焰金'
   },
   {
-    inputs: [{ color: 'gold', count: 1 }, { color: 'pink', count: 1 }],
+    primaryColor: 'gold',
+    secondaryColor: 'pink',
     output: { color: 'gold', variant: 'nature' },
-    name: '金+粉 → 自然金'
+    name: '金(主) + 粉(辅) → 自然金'
   }
 ];
 

@@ -83,7 +83,8 @@ export class SynthesisSystem {
       MUTATION_RECIPES_CONFIG.forEach(config => {
         const nextTier = (tier + 1) as PetalTier;
         this.mutationRecipes.push({
-          inputs: config.inputs.map(input => ({ tier, color: input.color, count: input.count })),
+          primaryColor: config.primaryColor,
+          secondaryColor: config.secondaryColor,
           output: { tier: nextTier, color: config.output.color, variant: config.output.variant, count: 1 },
           name: `${PETAL_TIER_NAMES[tier]}·${config.name} → ${PETAL_VARIANT_NAMES[config.output.variant]}${PETAL_TIER_NAMES[nextTier]}`
         });
@@ -646,9 +647,9 @@ export class SynthesisSystem {
 
   getAvailableMutations(): MutationRecipe[] {
     return this.mutationRecipes.filter(recipe => {
-      return recipe.inputs.every(input => {
-        return this.getItemCount(input.tier, input.color) >= input.count;
-      });
+      const hasPrimary = this.getItemCount(recipe.output.tier - 1 as PetalTier, recipe.primaryColor) >= 1;
+      const hasSecondary = this.getItemCount(recipe.output.tier - 1 as PetalTier, recipe.secondaryColor) >= 1;
+      return hasPrimary && hasSecondary;
     });
   }
 
@@ -656,29 +657,33 @@ export class SynthesisSystem {
     return this.getAvailableMutations().length > 0;
   }
 
-  tryMutate(tier: PetalTier, color1: PetalColor, color2: PetalColor): MutationResult {
+  tryMutate(tier: PetalTier, primaryColor: PetalColor, secondaryColor: PetalColor): MutationResult {
     const recipe = this.mutationRecipes.find(r =>
-      r.inputs.length === 2 &&
-      r.inputs.some(input => input.tier === tier && input.color === color1 && input.count === 1) &&
-      r.inputs.some(input => input.tier === tier && input.color === color2 && input.count === 1)
+      (r.output.tier - 1) === tier &&
+      r.primaryColor === primaryColor &&
+      r.secondaryColor === secondaryColor
     );
 
     if (!recipe) {
       return { success: false, message: '找不到异变配方' };
     }
 
-    for (const input of recipe.inputs) {
-      if (this.getItemCount(input.tier, input.color) < input.count) {
-        return {
-          success: false,
-          message: `材料不足：需要 ${PETAL_TIER_NAMES[input.tier]}(${input.color})`
-        };
-      }
+    if (this.getItemCount(tier, primaryColor) < 1) {
+      return {
+        success: false,
+        message: `材料不足：需要 ${PETAL_TIER_NAMES[tier]}(${primaryColor})`
+      };
     }
 
-    for (const input of recipe.inputs) {
-      this.removeFromInventory(input.tier, input.color, input.count);
+    if (this.getItemCount(tier, secondaryColor) < 1) {
+      return {
+        success: false,
+        message: `材料不足：需要 ${PETAL_TIER_NAMES[tier]}(${secondaryColor})`
+      };
     }
+
+    this.removeFromInventory(tier, primaryColor, 1);
+    this.removeFromInventory(tier, secondaryColor, 1);
 
     this.addToInventory(recipe.output.tier, recipe.output.color, recipe.output.variant);
     this.mutationCount++;
@@ -694,19 +699,33 @@ export class SynthesisSystem {
     const results: MutationResult[] = [];
     let mutated = true;
 
+    const primaryPriority: PetalColor[] = ['gold', 'pink', 'purple', 'blue'];
+    const tiers: PetalTier[] = [4, 3, 2, 1];
+
     while (mutated) {
       mutated = false;
-      const available = this.getAvailableMutations();
-      if (available.length === 0) break;
 
-      const recipe = available[0];
-      const input1 = recipe.inputs[0];
-      const input2 = recipe.inputs[1];
+      for (const tier of tiers) {
+        if (mutated) break;
 
-      const result = this.tryMutate(input1.tier, input1.color, input2.color);
-      results.push(result);
-      if (result.success) {
-        mutated = true;
+        for (const primary of primaryPriority) {
+          if (mutated) break;
+
+          const available = this.mutationRecipes.find(r =>
+            (r.output.tier - 1) === tier &&
+            r.primaryColor === primary &&
+            this.getItemCount(tier, r.primaryColor) >= 1 &&
+            this.getItemCount(tier, r.secondaryColor) >= 1
+          );
+
+          if (available) {
+            const result = this.tryMutate(tier, available.primaryColor, available.secondaryColor);
+            results.push(result);
+            if (result.success) {
+              mutated = true;
+            }
+          }
+        }
       }
     }
 
