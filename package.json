@@ -1,0 +1,20 @@
+{
+  "name": "dream-forest-synthesis",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "梦境森林题材的H5合成小游戏 - 收集发光花瓣唤醒沉睡恋人",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "phaser": "^3.80.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.5",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.12"
+  }
+}
