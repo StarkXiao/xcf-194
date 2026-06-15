@@ -22,9 +22,12 @@ export interface InventoryItem {
 }
 
 export interface MutationRecipe {
-  primaryColor: PetalColor;
-  secondaryColor: PetalColor;
-  output: { tier: PetalTier; color: PetalColor; variant: PetalVariant; count: number };
+  colorA: PetalColor;
+  colorB: PetalColor;
+  variant: PetalVariant;
+  tier: PetalTier;
+  outputColor: PetalColor;
+  outputTier: PetalTier;
   name: string;
 }
 
@@ -191,46 +194,34 @@ export const PETAL_VARIANT_EMOJI: Record<PetalVariant, string> = {
 };
 
 export const MUTATION_RECIPES_CONFIG: {
-  primaryColor: PetalColor;
-  secondaryColor: PetalColor;
-  output: { color: PetalColor; variant: PetalVariant };
+  colorA: PetalColor;
+  colorB: PetalColor;
+  variant: PetalVariant;
   name: string;
 }[] = [
   {
-    primaryColor: 'pink',
-    secondaryColor: 'gold',
-    output: { color: 'pink', variant: 'flame' },
-    name: '粉(主) + 金(辅) → 烈焰粉'
+    colorA: 'pink',
+    colorB: 'gold',
+    variant: 'flame',
+    name: '粉+金 → 烈焰'
   },
   {
-    primaryColor: 'blue',
-    secondaryColor: 'purple',
-    output: { color: 'blue', variant: 'frost' },
-    name: '蓝(主) + 紫(辅) → 寒霜蓝'
+    colorA: 'blue',
+    colorB: 'purple',
+    variant: 'frost',
+    name: '蓝+紫 → 寒霜'
   },
   {
-    primaryColor: 'purple',
-    secondaryColor: 'blue',
-    output: { color: 'purple', variant: 'shadow' },
-    name: '紫(主) + 蓝(辅) → 暗影紫'
+    colorA: 'pink',
+    colorB: 'blue',
+    variant: 'nature',
+    name: '粉+蓝 → 自然'
   },
   {
-    primaryColor: 'pink',
-    secondaryColor: 'blue',
-    output: { color: 'pink', variant: 'nature' },
-    name: '粉(主) + 蓝(辅) → 自然粉'
-  },
-  {
-    primaryColor: 'gold',
-    secondaryColor: 'purple',
-    output: { color: 'gold', variant: 'flame' },
-    name: '金(主) + 紫(辅) → 烈焰金'
-  },
-  {
-    primaryColor: 'gold',
-    secondaryColor: 'pink',
-    output: { color: 'gold', variant: 'nature' },
-    name: '金(主) + 粉(辅) → 自然金'
+    colorA: 'gold',
+    colorB: 'purple',
+    variant: 'shadow',
+    name: '金+紫 → 暗影'
   }
 ];
 

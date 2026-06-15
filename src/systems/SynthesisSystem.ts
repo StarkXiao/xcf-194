@@ -80,13 +80,25 @@ export class SynthesisSystem {
   private initializeMutationRecipes(): void {
     const tiers: PetalTier[] = [1, 2, 3, 4];
     tiers.forEach(tier => {
+      const nextTier = (tier + 1) as PetalTier;
       MUTATION_RECIPES_CONFIG.forEach(config => {
-        const nextTier = (tier + 1) as PetalTier;
         this.mutationRecipes.push({
-          primaryColor: config.primaryColor,
-          secondaryColor: config.secondaryColor,
-          output: { tier: nextTier, color: config.output.color, variant: config.output.variant, count: 1 },
-          name: `${PETAL_TIER_NAMES[tier]}·${config.name} → ${PETAL_VARIANT_NAMES[config.output.variant]}${PETAL_TIER_NAMES[nextTier]}`
+          colorA: config.colorA,
+          colorB: config.colorB,
+          variant: config.variant,
+          tier,
+          outputColor: config.colorA,
+          outputTier: nextTier,
+          name: `${PETAL_TIER_NAMES[tier]}·${config.name} → ${PETAL_VARIANT_NAMES[config.variant]}${PETAL_TIER_NAMES[nextTier]}(${config.colorA})`
+        });
+        this.mutationRecipes.push({
+          colorA: config.colorA,
+          colorB: config.colorB,
+          variant: config.variant,
+          tier,
+          outputColor: config.colorB,
+          outputTier: nextTier,
+          name: `${PETAL_TIER_NAMES[tier]}·${config.name} → ${PETAL_VARIANT_NAMES[config.variant]}${PETAL_TIER_NAMES[nextTier]}(${config.colorB})`
         });
       });
     });
@@ -647,9 +659,9 @@ export class SynthesisSystem {
 
   getAvailableMutations(): MutationRecipe[] {
     return this.mutationRecipes.filter(recipe => {
-      const hasPrimary = this.getItemCount(recipe.output.tier - 1 as PetalTier, recipe.primaryColor) >= 1;
-      const hasSecondary = this.getItemCount(recipe.output.tier - 1 as PetalTier, recipe.secondaryColor) >= 1;
-      return hasPrimary && hasSecondary;
+      const countA = this.getItemCount(recipe.tier, recipe.colorA);
+      const countB = this.getItemCount(recipe.tier, recipe.colorB);
+      return countA >= 1 && countB >= 1;
     });
   }
 
@@ -659,9 +671,10 @@ export class SynthesisSystem {
 
   tryMutate(tier: PetalTier, primaryColor: PetalColor, secondaryColor: PetalColor): MutationResult {
     const recipe = this.mutationRecipes.find(r =>
-      (r.output.tier - 1) === tier &&
-      r.primaryColor === primaryColor &&
-      r.secondaryColor === secondaryColor
+      r.tier === tier &&
+      r.colorA === primaryColor &&
+      r.colorB === secondaryColor &&
+      r.outputColor === primaryColor
     );
 
     if (!recipe) {
@@ -669,29 +682,23 @@ export class SynthesisSystem {
     }
 
     if (this.getItemCount(tier, primaryColor) < 1) {
-      return {
-        success: false,
-        message: `材料不足：需要 ${PETAL_TIER_NAMES[tier]}(${primaryColor})`
-      };
+      return { success: false, message: `材料不足：需要 ${PETAL_TIER_NAMES[tier]}(${primaryColor})` };
     }
 
     if (this.getItemCount(tier, secondaryColor) < 1) {
-      return {
-        success: false,
-        message: `材料不足：需要 ${PETAL_TIER_NAMES[tier]}(${secondaryColor})`
-      };
+      return { success: false, message: `材料不足：需要 ${PETAL_TIER_NAMES[tier]}(${secondaryColor})` };
     }
 
     this.removeFromInventory(tier, primaryColor, 1);
     this.removeFromInventory(tier, secondaryColor, 1);
 
-    this.addToInventory(recipe.output.tier, recipe.output.color, recipe.output.variant);
+    this.addToInventory(recipe.outputTier, recipe.outputColor, recipe.variant);
     this.mutationCount++;
 
     return {
       success: true,
-      output: recipe.output,
-      message: `异变成功！获得 ${PETAL_VARIANT_NAMES[recipe.output.variant]}${PETAL_TIER_NAMES[recipe.output.tier]}`
+      output: { tier: recipe.outputTier, color: recipe.outputColor, variant: recipe.variant, count: 1 },
+      message: `异变成功！获得 ${PETAL_VARIANT_NAMES[recipe.variant]}${PETAL_TIER_NAMES[recipe.outputTier]}`
     };
   }
 
@@ -699,7 +706,6 @@ export class SynthesisSystem {
     const results: MutationResult[] = [];
     let mutated = true;
 
-    const primaryPriority: PetalColor[] = ['gold', 'pink', 'purple', 'blue'];
     const tiers: PetalTier[] = [4, 3, 2, 1];
 
     while (mutated) {
@@ -708,22 +714,21 @@ export class SynthesisSystem {
       for (const tier of tiers) {
         if (mutated) break;
 
-        for (const primary of primaryPriority) {
+        for (const config of MUTATION_RECIPES_CONFIG) {
           if (mutated) break;
 
-          const available = this.mutationRecipes.find(r =>
-            (r.output.tier - 1) === tier &&
-            r.primaryColor === primary &&
-            this.getItemCount(tier, r.primaryColor) >= 1 &&
-            this.getItemCount(tier, r.secondaryColor) >= 1
-          );
+          const countA = this.getItemCount(tier, config.colorA);
+          const countB = this.getItemCount(tier, config.colorB);
 
-          if (available) {
-            const result = this.tryMutate(tier, available.primaryColor, available.secondaryColor);
-            results.push(result);
-            if (result.success) {
-              mutated = true;
-            }
+          if (countA < 1 || countB < 1) continue;
+
+          const primaryColor = countA >= countB ? config.colorA : config.colorB;
+          const secondaryColor = countA >= countB ? config.colorB : config.colorA;
+
+          const result = this.tryMutate(tier, primaryColor, secondaryColor);
+          results.push(result);
+          if (result.success) {
+            mutated = true;
           }
         }
       }

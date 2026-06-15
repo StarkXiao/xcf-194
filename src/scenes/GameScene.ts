@@ -595,7 +595,7 @@ export class GameScene extends Phaser.Scene {
     }).setOrigin(0.5);
     this.inventoryPanel.add(title);
 
-    const subtitle = this.add.text(0, -40, '3个同色→升级 | 彩虹2个→升级 | 粉蓝紫各1→彩虹 | 异色→异变', {
+    const subtitle = this.add.text(0, -40, '3同色→升级 | 彩虹2→升级 | 粉蓝紫→彩虹 | 异色对→异变', {
       fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
       fontSize: '16px',
       color: '#a78bfa'
@@ -853,7 +853,7 @@ export class GameScene extends Phaser.Scene {
     }).setOrigin(0.5);
     this.mutationPanel.add(title);
 
-    const subtitle = this.add.text(0, -128, '同阶·主色(决定产出) + 辅色(决定品种) → 异变品种(升阶)', {
+    const subtitle = this.add.text(0, -128, '异色对→品种固定 | 数量多的为主色(决定产出颜色)', {
       fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
       fontSize: '14px',
       color: '#a78bfa'
@@ -861,66 +861,71 @@ export class GameScene extends Phaser.Scene {
     this.mutationPanel.add(subtitle);
 
     const recipeContainer = this.add.container(0, -70);
-    const recipes = [
-      { primary: 'pink', secondary: 'gold', output: '烈焰粉', emoji: '🔥', color: 0xff9ec4 },
-      { primary: 'blue', secondary: 'purple', output: '寒霜蓝', emoji: '❄️', color: 0x7dd3fc },
-      { primary: 'purple', secondary: 'blue', output: '暗影紫', emoji: '🌑', color: 0xc084fc },
-      { primary: 'pink', secondary: 'blue', output: '自然粉', emoji: '🌿', color: 0xff9ec4 },
-      { primary: 'gold', secondary: 'purple', output: '烈焰金', emoji: '🔥', color: 0xfcd34d },
-      { primary: 'gold', secondary: 'pink', output: '自然金', emoji: '🌿', color: 0xfcd34d },
+    const recipes: { colorA: PetalColor; colorB: PetalColor; variant: PetalVariant; name: string }[] = [
+      { colorA: 'pink', colorB: 'gold', variant: 'flame', name: '烈焰' },
+      { colorA: 'blue', colorB: 'purple', variant: 'frost', name: '寒霜' },
+      { colorA: 'pink', colorB: 'blue', variant: 'nature', name: '自然' },
+      { colorA: 'gold', colorB: 'purple', variant: 'shadow', name: '暗影' },
     ];
 
+    const colorHexMap: Record<PetalColor, number> = {
+      pink: 0xff9ec4, blue: 0x7dd3fc, purple: 0xc084fc, gold: 0xfcd34d, rainbow: 0xffffff
+    };
+
     recipes.forEach((recipe, i) => {
-      const rowY = Math.floor(i / 3) * 50;
-      const colX = (i % 3 - 1) * 220;
+      const rowY = Math.floor(i / 2) * 55;
+      const colX = (i % 2 === 0 ? -1 : 1) * 165;
 
       const rowBg = this.add.graphics();
       rowBg.fillStyle(0x312e81, 0.5);
-      rowBg.fillRoundedRect(colX - 100, rowY - 20, 200, 40, 10);
-      rowBg.lineStyle(1, recipe.color, 0.5);
-      rowBg.strokeRoundedRect(colX - 100, rowY - 20, 200, 40, 10);
+      rowBg.fillRoundedRect(colX - 140, rowY - 22, 280, 44, 10);
+      rowBg.lineStyle(1, PETAL_VARIANT_COLOR_MAP[recipe.variant], 0.6);
+      rowBg.strokeRoundedRect(colX - 140, rowY - 22, 280, 44, 10);
       recipeContainer.add(rowBg);
 
-      const primaryDot = this.add.graphics();
-      primaryDot.fillStyle(recipe.color, 1);
-      primaryDot.fillCircle(colX - 70, rowY, 10);
-      recipeContainer.add(primaryDot);
+      const dotA = this.add.graphics();
+      dotA.fillStyle(colorHexMap[recipe.colorA], 1);
+      dotA.fillCircle(colX - 110, rowY, 12);
+      recipeContainer.add(dotA);
 
-      const plusText = this.add.text(colX - 45, rowY, '+', {
+      const plusText = this.add.text(colX - 80, rowY, '+', {
         fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
-        fontSize: '14px',
+        fontSize: '16px',
         color: '#a78bfa'
       }).setOrigin(0.5);
       recipeContainer.add(plusText);
 
-      const secondaryDot = this.add.graphics();
-      const secondaryColor = recipe.secondary === 'gold' ? 0xfcd34d :
-                           recipe.secondary === 'purple' ? 0xc084fc :
-                           recipe.secondary === 'blue' ? 0x7dd3fc :
-                           recipe.secondary === 'pink' ? 0xff9ec4 : 0xffffff;
-      secondaryDot.fillStyle(secondaryColor, 1);
-      secondaryDot.fillCircle(colX - 20, rowY, 10);
-      recipeContainer.add(secondaryDot);
+      const dotB = this.add.graphics();
+      dotB.fillStyle(colorHexMap[recipe.colorB], 1);
+      dotB.fillCircle(colX - 50, rowY, 12);
+      recipeContainer.add(dotB);
 
-      const arrowText = this.add.text(colX + 10, rowY, '→', {
+      const arrowText = this.add.text(colX - 15, rowY, '→', {
         fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
-        fontSize: '14px',
+        fontSize: '16px',
         color: '#a78bfa'
       }).setOrigin(0.5);
       recipeContainer.add(arrowText);
 
-      const emojiText = this.add.text(colX + 45, rowY, recipe.emoji, {
-        fontSize: '16px'
+      const emojiText = this.add.text(colX + 20, rowY, PETAL_VARIANT_EMOJI[recipe.variant], {
+        fontSize: '18px'
       }).setOrigin(0.5);
       recipeContainer.add(emojiText);
 
-      const nameText = this.add.text(colX + 75, rowY, recipe.output, {
+      const nameText = this.add.text(colX + 65, rowY, recipe.name, {
         fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
-        fontSize: '13px',
+        fontSize: '15px',
         color: '#fef3c7',
         fontStyle: 'bold'
       }).setOrigin(0.5);
       recipeContainer.add(nameText);
+
+      const tipText = this.add.text(colX + 115, rowY, '←主色', {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '10px',
+        color: '#86efac'
+      }).setOrigin(0.5);
+      recipeContainer.add(tipText);
     });
     this.mutationPanel.add(recipeContainer);
 
