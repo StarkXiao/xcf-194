@@ -206,9 +206,9 @@ export class MenuScene extends Phaser.Scene {
 
     const panel = this.add.graphics();
     panel.fillStyle(0x1e1b4b, 0.95);
-    panel.fillRoundedRect(GAME_WIDTH / 2 - 300, 300, 600, 600, 24);
+    panel.fillRoundedRect(GAME_WIDTH / 2 - 300, 300, 600, 680, 24);
     panel.lineStyle(2, 0xa78bfa, 0.8);
-    panel.strokeRoundedRect(GAME_WIDTH / 2 - 300, 300, 600, 600, 24);
+    panel.strokeRoundedRect(GAME_WIDTH / 2 - 300, 300, 600, 680, 24);
 
     this.add.text(GAME_WIDTH / 2, 350, '游戏说明', {
       fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
@@ -224,14 +224,16 @@ export class MenuScene extends Phaser.Scene {
       '🔄 点击背包支持连续合成，自动升级',
       '⚡ 开启自动补料，低阶花瓣自动补全',
       '⭐ 合成更高等级花瓣获得更多分数',
+      '🗺️ 唤醒进度达到阈值可解锁新林地',
+      '💎 新区域开放稀有花种，收集更多奖励',
       '💖 唤醒值满100即可唤醒恋人',
       '💾 游戏进度自动保存，支持继续游戏'
     ];
 
     instructions.forEach((text, i) => {
-      this.add.text(GAME_WIDTH / 2, 420 + i * 65, text, {
+      this.add.text(GAME_WIDTH / 2, 420 + i * 58, text, {
         fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
-        fontSize: '22px',
+        fontSize: '20px',
         color: '#c4b5fd',
         align: 'center',
         wordWrap: { width: 520 }
@@ -240,13 +242,13 @@ export class MenuScene extends Phaser.Scene {
 
     const closeBtn = this.add.graphics();
     closeBtn.fillStyle(0x7c3aed, 0.9);
-    closeBtn.fillRoundedRect(GAME_WIDTH / 2 - 100, 820, 200, 56, 28);
+    closeBtn.fillRoundedRect(GAME_WIDTH / 2 - 100, 900, 200, 56, 28);
     closeBtn.setInteractive(
-      new Phaser.Geom.Rectangle(GAME_WIDTH / 2 - 100, 820, 200, 56),
+      new Phaser.Geom.Rectangle(GAME_WIDTH / 2 - 100, 900, 200, 56),
       Phaser.Geom.Rectangle.Contains
     );
 
-    this.add.text(GAME_WIDTH / 2, 848, '知道了', {
+    this.add.text(GAME_WIDTH / 2, 928, '知道了', {
       fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
       fontSize: '22px',
       color: '#fef3c7',

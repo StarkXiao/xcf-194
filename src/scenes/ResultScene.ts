@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { SaveManager } from '../managers/SaveManager';
 import { AudioManager } from '../managers/AudioManager';
-import { GAME_WIDTH, GAME_HEIGHT, AWAKEN_GOAL } from '../types';
+import { GAME_WIDTH, GAME_HEIGHT, AWAKEN_GOAL, RegionId, REGION_CONFIGS } from '../types';
 
 interface ResultData {
   score: number;
@@ -10,6 +10,8 @@ interface ResultData {
   synthesisCount: number;
   playTime: number;
   victory: boolean;
+  unlockedRegions: RegionId[];
+  rarePetalsCollected: number;
 }
 
 export class ResultScene extends Phaser.Scene {
@@ -77,11 +79,12 @@ export class ResultScene extends Phaser.Scene {
   private createResultPanel(): void {
     const panelY = GAME_HEIGHT / 2 - 100;
 
+    const panelHeight = 780;
     const panel = this.add.graphics();
     panel.fillStyle(0x1e1b4b, 0.95);
-    panel.fillRoundedRect(GAME_WIDTH / 2 - 320, panelY - 250, 640, 580, 28);
+    panel.fillRoundedRect(GAME_WIDTH / 2 - 320, panelY - 250, 640, panelHeight, 28);
     panel.lineStyle(3, this.resultData.victory ? 0xfde68a : 0xa78bfa, 0.8);
-    panel.strokeRoundedRect(GAME_WIDTH / 2 - 320, panelY - 250, 640, 580, 28);
+    panel.strokeRoundedRect(GAME_WIDTH / 2 - 320, panelY - 250, 640, panelHeight, 28);
 
     const titleEmoji = this.resultData.victory ? '🌸' : '🌙';
     const titleText = this.resultData.victory ? '恋人已苏醒！' : '旅程暂告段落';
@@ -115,28 +118,65 @@ export class ResultScene extends Phaser.Scene {
       { label: '💖 唤醒进度', value: `${Math.floor(this.resultData.awakeProgress)}% / ${AWAKEN_GOAL}%`, color: '#f9a8d4' },
       { label: '🌸 收集花瓣', value: this.resultData.totalPetalsCollected.toString(), color: '#86efac' },
       { label: '⭐ 合成次数', value: this.resultData.synthesisCount.toString(), color: '#93c5fd' },
+      { label: '💎 稀有花瓣', value: (this.resultData.rarePetalsCollected ?? 0).toString(), color: '#fbbf24' },
       { label: '⏱️ 游戏时长', value: this.formatTime(this.resultData.playTime), color: '#c4b5fd' }
     ];
 
     stats.forEach((stat, i) => {
-      const y = panelY + 50 + i * 58;
+      const y = panelY + 50 + i * 52;
       this.add.text(GAME_WIDTH / 2 - 200, y, stat.label, {
         fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
-        fontSize: '22px',
+        fontSize: '20px',
         color: stat.color
       }).setOrigin(0, 0.5);
 
       this.add.text(GAME_WIDTH / 2 + 200, y, stat.value, {
         fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
-        fontSize: '24px',
+        fontSize: '22px',
         color: '#fef3c7',
         fontStyle: 'bold'
       }).setOrigin(1, 0.5);
     });
 
+    const regionDivider = this.add.graphics();
+    const regionSectionY = panelY + 50 + stats.length * 52 + 10;
+    regionDivider.lineStyle(1, 0x6366f1, 0.5);
+    regionDivider.lineBetween(GAME_WIDTH / 2 - 250, regionSectionY, GAME_WIDTH / 2 + 250, regionSectionY);
+
+    this.add.text(GAME_WIDTH / 2, regionSectionY + 30, '🗺️ 探索区域', {
+      fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+      fontSize: '22px',
+      color: '#fde68a',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+
+    const unlockedRegions = this.resultData.unlockedRegions ?? ['initial'];
+    REGION_CONFIGS.forEach((region, i) => {
+      const y = regionSectionY + 70 + i * 40;
+      const isUnlocked = unlockedRegions.includes(region.id);
+
+      const icon = this.add.text(GAME_WIDTH / 2 - 200, y, region.emoji, {
+        fontSize: '20px'
+      }).setOrigin(0, 0.5).setAlpha(isUnlocked ? 1 : 0.3);
+
+      const name = this.add.text(GAME_WIDTH / 2 - 150, y, region.name, {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '18px',
+        color: isUnlocked ? '#fef3c7' : '#4b5563',
+        fontStyle: isUnlocked ? 'bold' : 'normal'
+      }).setOrigin(0, 0.5);
+
+      const status = this.add.text(GAME_WIDTH / 2 + 200, y, isUnlocked ? '✓ 已解锁' : `🔒 ${region.unlockThreshold}%`, {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '16px',
+        color: isUnlocked ? '#86efac' : '#6b7280'
+      }).setOrigin(1, 0.5);
+    });
+
     const saveData = this.saveManager.loadSave();
     if (this.resultData.score >= saveData.bestScore && this.resultData.score > 0) {
-      this.add.text(GAME_WIDTH / 2, panelY + 350, '🏆 新纪录！', {
+      const recordY = regionSectionY + 70 + REGION_CONFIGS.length * 40 + 20;
+      this.add.text(GAME_WIDTH / 2, recordY, '🏆 新纪录！', {
         fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
         fontSize: '28px',
         color: '#fde68a',

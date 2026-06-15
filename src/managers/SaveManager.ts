@@ -179,6 +179,14 @@ export class SaveManager {
       if (!result.gameState.synthesisCount) {
         result.gameState.synthesisCount = 0;
       }
+
+      if (!result.gameState.unlockedRegions) {
+        result.gameState.unlockedRegions = ['initial'];
+      }
+
+      if (typeof result.gameState.rarePetalsCollected !== 'number') {
+        result.gameState.rarePetalsCollected = 0;
+      }
     }
 
     return result;

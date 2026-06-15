@@ -13,7 +13,10 @@ import {
   PetalColor,
   PETAL_COLORS,
   GameState,
-  Petal as PetalType
+  Petal as PetalType,
+  RegionId,
+  RegionConfig,
+  REGION_CONFIGS
 } from '../types';
 
 export class GameScene extends Phaser.Scene {
@@ -50,6 +53,14 @@ export class GameScene extends Phaser.Scene {
 
   private loadingGameState: boolean = false;
 
+  private unlockedRegions: RegionId[] = ['initial'];
+  private rarePetalsCollected: number = 0;
+  private regionIndicator!: Phaser.GameObjects.Container;
+  private regionBgGraphics!: Phaser.GameObjects.Graphics;
+  private unlockNotificationContainer!: Phaser.GameObjects.Container;
+  private guideText!: Phaser.GameObjects.Text;
+  private currentBgRegion: RegionId = 'initial';
+
   constructor() {
     super('GameScene');
   }
@@ -65,6 +76,8 @@ export class GameScene extends Phaser.Scene {
     this.createBackground();
     this.createLover();
     this.createHUD();
+    this.createRegionIndicator();
+    this.createGuideText();
     this.createInventory();
     this.createBackButton();
     this.createAutoFeedButton();
@@ -90,13 +103,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createBackground(): void {
-    const gradient = this.add.graphics();
-    gradient.fillGradientStyle(0x0f0a1e, 0x1a0a2e, 0x1e1b4b, 0x2d1b4e, 1);
-    gradient.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    const config = this.getActiveRegionConfig();
 
-    const ground = this.add.graphics();
-    ground.fillGradientStyle(0x1e1b4b, 0x1e1b4b, 0x312e81, 0x312e81, 1);
-    ground.fillRoundedRect(0, GAME_HEIGHT - 250, GAME_WIDTH, 250, { tl: 80, tr: 80, bl: 0, br: 0 });
+    this.regionBgGraphics = this.add.graphics();
+    this.renderRegionBackground(config);
 
     for (let i = 0; i < 80; i++) {
       const x = Phaser.Math.Between(0, GAME_WIDTH);
@@ -110,9 +120,9 @@ export class GameScene extends Phaser.Scene {
       const tree = this.add.graphics();
       const treeHeight = Phaser.Math.Between(350, 500);
       const baseY = GAME_HEIGHT - 250;
-      tree.fillGradientStyle(0x1e1b4b, 0x1e1b4b, 0x0f0a1e, 0x0f0a1e, 0.9);
+      tree.fillGradientStyle(config.bgColors.treeColor, config.bgColors.treeColor, 0x0f0a1e, 0x0f0a1e, 0.9);
       tree.fillTriangle(x - 50, baseY, x + 50, baseY, x, baseY - treeHeight);
-      tree.fillStyle(0x312e81, 0.5);
+      tree.fillStyle(config.bgColors.leafColor, 0.5);
       const leafY = baseY - treeHeight + 30;
       tree.fillCircle(x, leafY, 80 + i * 5);
       tree.fillCircle(x - 35, leafY + 30, 55);
@@ -127,6 +137,236 @@ export class GameScene extends Phaser.Scene {
       p.y = Phaser.Math.Between(150, GAME_HEIGHT - 350);
       p.setData('phase', Phaser.Math.FloatBetween(0, Math.PI * 2));
       this.bgParticles.push(p);
+    }
+  }
+
+  private renderRegionBackground(config: RegionConfig): void {
+    this.regionBgGraphics.clear();
+    this.regionBgGraphics.fillGradientStyle(
+      config.bgColors.sky1, config.bgColors.sky2,
+      config.bgColors.ground1, config.bgColors.ground2, 1
+    );
+    this.regionBgGraphics.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+    const ground = this.regionBgGraphics;
+    ground.fillGradientStyle(
+      config.bgColors.ground1, config.bgColors.ground1,
+      config.bgColors.ground2, config.bgColors.ground2, 1
+    );
+    ground.fillRoundedRect(0, GAME_HEIGHT - 250, GAME_WIDTH, 250, { tl: 80, tr: 80, bl: 0, br: 0 });
+  }
+
+  private getActiveRegionConfig(): RegionConfig {
+    let activeConfig = REGION_CONFIGS[0];
+    for (const config of REGION_CONFIGS) {
+      if (this.awakeProgress >= config.unlockThreshold) {
+        activeConfig = config;
+      }
+    }
+    return activeConfig;
+  }
+
+  private createRegionIndicator(): void {
+    this.regionIndicator = this.add.container(GAME_WIDTH - 100, 280);
+
+    const bg = this.add.graphics();
+    bg.fillStyle(0x1e1b4b, 0.9);
+    bg.fillRoundedRect(-90, -18, 180, 36, 18);
+    bg.lineStyle(2, 0xa78bfa, 0.7);
+    bg.strokeRoundedRect(-90, -18, 180, 36, 18);
+    this.regionIndicator.add(bg);
+
+    const config = this.getActiveRegionConfig();
+    const label = this.add.text(0, 0, `${config.emoji} ${config.name}`, {
+      fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+      fontSize: '18px',
+      color: '#fde68a',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.regionIndicator.add(label);
+    this.regionIndicator.setData('label', label);
+    this.regionIndicator.setData('bg', bg);
+  }
+
+  private updateRegionIndicator(): void {
+    const config = this.getActiveRegionConfig();
+    const label = this.regionIndicator.getData('label') as Phaser.GameObjects.Text;
+    if (label) {
+      label.setText(`${config.emoji} ${config.name}`);
+    }
+  }
+
+  private createGuideText(): void {
+    this.guideText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 480, '', {
+      fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+      fontSize: '18px',
+      color: '#fde68a',
+      fontStyle: 'bold',
+      backgroundColor: '#1e1b4bcc',
+      padding: { x: 16, y: 8 },
+      align: 'center'
+    }).setOrigin(0.5).setAlpha(0).setDepth(100);
+  }
+
+  private showGuideText(text: string, duration: number = 4000): void {
+    this.guideText.setText(text);
+    this.guideText.setAlpha(1);
+    this.tweens.add({
+      targets: this.guideText,
+      alpha: 0,
+      duration: 800,
+      delay: duration,
+      ease: 'Sine.easeOut'
+    });
+  }
+
+  private checkRegionUnlocks(): void {
+    for (const config of REGION_CONFIGS) {
+      if (this.awakeProgress >= config.unlockThreshold && !this.unlockedRegions.includes(config.id)) {
+        this.unlockedRegions.push(config.id);
+        this.onRegionUnlocked(config);
+      }
+    }
+
+    const activeConfig = this.getActiveRegionConfig();
+    if (activeConfig.id !== this.currentBgRegion) {
+      this.currentBgRegion = activeConfig.id;
+      this.tweens.addCounter({
+        from: 0,
+        to: 1,
+        duration: 800,
+        ease: 'Sine.easeInOut',
+        onUpdate: () => {
+          this.renderRegionBackground(activeConfig);
+        }
+      });
+      this.updateRegionIndicator();
+    }
+  }
+
+  private onRegionUnlocked(config: RegionConfig): void {
+    this.showRegionUnlockNotification(config);
+    this.showGuideText(config.unlockGuide, 5000);
+    this.audioManager.playVictory();
+
+    if (config.id !== 'initial' && config.id !== 'eternal') {
+      this.spawnRarePetal(config);
+    }
+  }
+
+  private showRegionUnlockNotification(config: RegionConfig): void {
+    if (this.unlockNotificationContainer) {
+      this.unlockNotificationContainer.destroy(true);
+    }
+
+    this.unlockNotificationContainer = this.add.container(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 50);
+    this.unlockNotificationContainer.setDepth(200);
+
+    const overlay = this.add.graphics();
+    overlay.fillStyle(0x0a0514, 0.5);
+    overlay.fillRect(-GAME_WIDTH / 2, -80, GAME_WIDTH, 160);
+    this.unlockNotificationContainer.add(overlay);
+
+    const panel = this.add.graphics();
+    panel.fillStyle(0x1e1b4b, 0.97);
+    panel.fillRoundedRect(-280, -65, 560, 130, 20);
+    panel.lineStyle(3, 0xfde68a, 0.9);
+    panel.strokeRoundedRect(-280, -65, 560, 130, 20);
+    this.unlockNotificationContainer.add(panel);
+
+    const title = this.add.text(0, -35, `${config.emoji} 新区域开放！`, {
+      fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+      fontSize: '28px',
+      color: '#fde68a',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.unlockNotificationContainer.add(title);
+
+    const name = this.add.text(0, 5, config.name, {
+      fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+      fontSize: '24px',
+      color: '#fef3c7',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.unlockNotificationContainer.add(name);
+
+    const desc = this.add.text(0, 40, config.description, {
+      fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+      fontSize: '18px',
+      color: '#c4b5fd'
+    }).setOrigin(0.5);
+    this.unlockNotificationContainer.add(desc);
+
+    this.unlockNotificationContainer.setScale(0.5);
+    this.unlockNotificationContainer.setAlpha(0);
+    this.tweens.add({
+      targets: this.unlockNotificationContainer,
+      scale: 1,
+      alpha: 1,
+      duration: 500,
+      ease: 'Back.easeOut'
+    });
+
+    this.time.delayedCall(3500, () => {
+      if (this.unlockNotificationContainer) {
+        this.tweens.add({
+          targets: this.unlockNotificationContainer,
+          alpha: 0,
+          scale: 0.8,
+          duration: 400,
+          ease: 'Sine.easeIn',
+          onComplete: () => {
+            this.unlockNotificationContainer?.destroy(true);
+            this.unlockNotificationContainer = null as any;
+          }
+        });
+      }
+    });
+  }
+
+  private spawnRarePetal(config: RegionConfig): void {
+    const rule = config.spawnRule;
+    if (!rule.rareColor || !rule.rareTier) return;
+
+    const x = Phaser.Math.Between(60, GAME_WIDTH - 60);
+    const y = Phaser.Math.Between(450, GAME_HEIGHT - 500);
+
+    const petalData: Petal = {
+      id: `rare_${Date.now()}_${Phaser.Math.Between(0, 10000)}`,
+      tier: rule.rareTier,
+      color: rule.rareColor,
+      x,
+      y,
+      collected: false
+    };
+
+    const petalContainer = this.add.container(x, y);
+    this.petalData.set(petalContainer, petalData);
+    this.petals.push(petalContainer);
+
+    this.createPetalVisual(petalContainer, rule.rareColor, rule.rareTier);
+    this.animationManager.playPetalFloat(petalContainer);
+
+    petalContainer.setScale(0);
+    this.tweens.add({
+      targets: petalContainer,
+      scale: 1.3,
+      duration: 400,
+      ease: 'Back.easeOut',
+      onComplete: () => {
+        this.tweens.add({
+          targets: petalContainer,
+          scale: 1,
+          duration: 200
+        });
+      }
+    });
+
+    if (this.physics.world) {
+      this.physics.add.existing(petalContainer);
+      const body = petalContainer.body as Phaser.Physics.Arcade.Body;
+      body.setCircle(25);
+      body.setAllowGravity(false);
     }
   }
 
@@ -188,6 +428,14 @@ export class GameScene extends Phaser.Scene {
       fontSize: '22px',
       color: '#f9a8d4'
     });
+
+    const nextRegion = REGION_CONFIGS.find(r => r.unlockThreshold > this.awakeProgress);
+    const nextHint = nextRegion ? ` → ${nextRegion.unlockThreshold}% 解锁${nextRegion.name}` : '';
+    this.add.text(230, 108, nextHint, {
+      fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+      fontSize: '14px',
+      color: '#a78bfa'
+    }).setData('isNextRegionHint', true);
 
     const barBg = this.add.graphics();
     barBg.fillStyle(0x312e81, 0.8);
@@ -433,7 +681,9 @@ export class GameScene extends Phaser.Scene {
       totalPetalsCollected: this.totalPetalsCollected,
       synthesisCount: this.synthesisCount,
       playTime: Math.floor((Date.now() - this.startTime) / 1000),
-      isCompleted: this.isCompleted
+      isCompleted: this.isCompleted,
+      unlockedRegions: [...this.unlockedRegions],
+      rarePetalsCollected: this.rarePetalsCollected
     };
 
     const petalDataArray: PetalType[] = [];
@@ -476,6 +726,9 @@ export class GameScene extends Phaser.Scene {
     this.synthesisCount = gameState.synthesisCount;
     this.isCompleted = gameState.isCompleted;
     this.startTime = Date.now() - (gameState.playTime * 1000);
+    this.unlockedRegions = gameState.unlockedRegions ?? ['initial'];
+    this.rarePetalsCollected = gameState.rarePetalsCollected ?? 0;
+    this.currentBgRegion = this.getActiveRegionConfig().id;
 
     this.synthesisSystem.setInventory(gameState.inventory);
 
@@ -525,11 +778,24 @@ export class GameScene extends Phaser.Scene {
   }
 
   private spawnPetal(): void {
+    const config = this.getActiveRegionConfig();
+    const rule = config.spawnRule;
+
     const x = Phaser.Math.Between(60, GAME_WIDTH - 60);
     const y = Phaser.Math.Between(450, GAME_HEIGHT - 500);
 
-    const tier: PetalTier = 1;
-    const color = PETAL_COLORS[Phaser.Math.Between(0, 3)];
+    let tier: PetalTier = 1;
+    let color: PetalColor;
+
+    if (rule.rareChance > 0 && rule.rareColor && rule.rareTier && Math.random() < rule.rareChance) {
+      tier = rule.rareTier;
+      color = rule.rareColor;
+    } else {
+      color = rule.colors[Phaser.Math.Between(0, rule.colors.length - 1)];
+      if (rule.maxTier > 1 && Math.random() < 0.2) {
+        tier = Phaser.Math.Between(1, Math.min(rule.maxTier, 2)) as PetalTier;
+      }
+    }
 
     const petalData: Petal = {
       id: `petal_${Date.now()}_${Phaser.Math.Between(0, 10000)}`,
@@ -633,13 +899,21 @@ export class GameScene extends Phaser.Scene {
     this.synthesisSystem.addToInventory(data.tier, data.color);
     this.totalPetalsCollected++;
 
-    const scoreGain = data.tier * 15 + (data.color === 'gold' ? 30 : 0);
+    const config = this.getActiveRegionConfig();
+    const isRare = config.spawnRule.rareColor === data.color && config.spawnRule.rareTier === data.tier;
+    if (isRare) {
+      this.rarePetalsCollected++;
+    }
+
+    const scoreGain = data.tier * 15 + (data.color === 'gold' ? 30 : 0) + (isRare ? 50 : 0);
     this.score += scoreGain;
     this.updateScore();
 
-    const progressGain = data.tier * 2.5;
+    const progressGain = data.tier * 2.5 + (isRare ? 5 : 0);
     this.awakeProgress = Math.min(AWAKEN_GOAL, this.awakeProgress + progressGain);
     this.updateProgressBar();
+
+    this.checkRegionUnlocks();
 
     this.updateInventoryDisplay();
 
@@ -699,6 +973,7 @@ export class GameScene extends Phaser.Scene {
       this.awakeProgress = Math.min(AWAKEN_GOAL, this.awakeProgress + totalProgress);
       this.updateScore();
       this.updateProgressBar();
+      this.checkRegionUnlocks();
 
       if (result.autoFedCount > 0) {
         this.audioManager.playAutoFeed(result.autoFedCount);
@@ -793,6 +1068,7 @@ export class GameScene extends Phaser.Scene {
       this.awakeProgress = Math.min(AWAKEN_GOAL, this.awakeProgress + totalProgress);
       this.updateScore();
       this.updateProgressBar();
+      this.checkRegionUnlocks();
 
       for (let i = 0; i < result.chainLength; i++) {
         const outputTier = result.outputs.find((o, idx) => {
@@ -961,7 +1237,9 @@ export class GameScene extends Phaser.Scene {
       totalPetalsCollected: this.totalPetalsCollected,
       synthesisCount: this.synthesisCount,
       playTime,
-      victory
+      victory,
+      unlockedRegions: [...this.unlockedRegions],
+      rarePetalsCollected: this.rarePetalsCollected
     });
   }
 
