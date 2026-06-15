@@ -2,31 +2,44 @@ import {
   InventoryItem,
   PetalTier,
   PetalColor,
+  PetalVariant,
   PETAL_TIER_NAMES,
   SynthesisRecipe,
+  MutationRecipe,
   Petal,
   SynthesisQueueItem,
   ContinuousSynthesisResult,
   AutoFeedResult,
   InventoryValidationResult,
+  MUTATION_RECIPES_CONFIG,
+  PETAL_VARIANT_NAMES,
   Petal as PetalType
 } from '../types';
 
 export interface SynthesisResult {
   success: boolean;
-  output?: { tier: PetalTier; color: PetalColor; count: number };
+  output?: { tier: PetalTier; color: PetalColor; variant?: PetalVariant; count: number };
+  message?: string;
+}
+
+export interface MutationResult {
+  success: boolean;
+  output?: { tier: PetalTier; color: PetalColor; variant: PetalVariant; count: number };
   message?: string;
 }
 
 export class SynthesisSystem {
   private inventory: InventoryItem[] = [];
   private recipes: SynthesisRecipe[] = [];
+  private mutationRecipes: MutationRecipe[] = [];
   private synthesisQueue: SynthesisQueueItem[] = [];
   private autoFeedEnabled: boolean = true;
   private pendingPetals: PetalType[] = [];
+  private mutationCount: number = 0;
 
   constructor() {
     this.initializeRecipes();
+    this.initializeMutationRecipes();
   }
 
   private initializeRecipes(): void {
@@ -64,17 +77,31 @@ export class SynthesisSystem {
     });
   }
 
-  addToInventory(tier: PetalTier, color: PetalColor): void {
-    const existing = this.inventory.find(i => i.tier === tier && i.color === color);
+  private initializeMutationRecipes(): void {
+    const tiers: PetalTier[] = [1, 2, 3, 4];
+    tiers.forEach(tier => {
+      MUTATION_RECIPES_CONFIG.forEach(config => {
+        const nextTier = (tier + 1) as PetalTier;
+        this.mutationRecipes.push({
+          inputs: config.inputs.map(input => ({ tier, color: input.color, count: input.count })),
+          output: { tier: nextTier, color: config.output.color, variant: config.output.variant, count: 1 },
+          name: `${PETAL_TIER_NAMES[tier]}·${config.name} → ${PETAL_VARIANT_NAMES[config.output.variant]}${PETAL_TIER_NAMES[nextTier]}`
+        });
+      });
+    });
+  }
+
+  addToInventory(tier: PetalTier, color: PetalColor, variant?: PetalVariant): void {
+    const existing = this.inventory.find(i => i.tier === tier && i.color === color && i.variant === variant);
     if (existing) {
       existing.count++;
     } else {
-      this.inventory.push({ tier, color, count: 1 });
+      this.inventory.push({ tier, color, variant, count: 1 });
     }
   }
 
-  removeFromInventory(tier: PetalTier, color: PetalColor, count: number): boolean {
-    const item = this.inventory.find(i => i.tier === tier && i.color === color);
+  removeFromInventory(tier: PetalTier, color: PetalColor, count: number, variant?: PetalVariant): boolean {
+    const item = this.inventory.find(i => i.tier === tier && i.color === color && i.variant === variant);
     if (!item || item.count < count) return false;
 
     item.count -= count;
@@ -85,8 +112,8 @@ export class SynthesisSystem {
     return true;
   }
 
-  getItemCount(tier: PetalTier, color: PetalColor): number {
-    const item = this.inventory.find(i => i.tier === tier && i.color === color);
+  getItemCount(tier: PetalTier, color: PetalColor, variant?: PetalVariant): number {
+    const item = this.inventory.find(i => i.tier === tier && i.color === color && i.variant === variant);
     return item?.count || 0;
   }
 
@@ -274,6 +301,7 @@ export class SynthesisSystem {
     const corrected: InventoryItem[] = [];
     const validTiers: PetalTier[] = [1, 2, 3, 4, 5];
     const validColors: PetalColor[] = ['pink', 'blue', 'purple', 'gold', 'rainbow'];
+    const validVariants: PetalVariant[] = ['flame', 'frost', 'shadow', 'nature'];
 
     const seen = new Map<string, InventoryItem>();
 
@@ -288,21 +316,26 @@ export class SynthesisSystem {
         continue;
       }
 
+      if (item.variant && !validVariants.includes(item.variant)) {
+        issues.push(`无效的异变类型: ${item.variant}`);
+        continue;
+      }
+
       if (typeof item.count !== 'number' || isNaN(item.count)) {
         issues.push(`无效的数量值: ${item.count}`);
         continue;
       }
 
       if (item.count <= 0) {
-        issues.push(`移除数量为 ${item.count} 的物品: ${PETAL_TIER_NAMES[item.tier]}(${item.color})`);
+        issues.push(`移除数量为 ${item.count} 的物品: ${PETAL_TIER_NAMES[item.tier]}(${item.color})${item.variant ? `·${PETAL_VARIANT_NAMES[item.variant]}` : ''}`);
         continue;
       }
 
-      const key = `${item.tier}-${item.color}`;
+      const key = `${item.tier}-${item.color}-${item.variant ?? ''}`;
       if (seen.has(key)) {
         const existing = seen.get(key)!;
         existing.count += item.count;
-        issues.push(`合并重复物品: ${PETAL_TIER_NAMES[item.tier]}(${item.color}) x${item.count}`);
+        issues.push(`合并重复物品: ${PETAL_TIER_NAMES[item.tier]}(${item.color})${item.variant ? `·${PETAL_VARIANT_NAMES[item.variant]}` : ''} x${item.count}`);
       } else {
         seen.set(key, { ...item });
       }
@@ -311,6 +344,9 @@ export class SynthesisSystem {
     corrected.push(...seen.values());
 
     corrected.sort((a, b) => {
+      const va = a.variant ?? '';
+      const vb = b.variant ?? '';
+      if (va !== vb) return va.localeCompare(vb);
       if (a.color !== b.color) return a.color.localeCompare(b.color);
       return a.tier - b.tier;
     });
@@ -602,5 +638,103 @@ export class SynthesisSystem {
 
   getInventoryCopy(): InventoryItem[] {
     return this.inventory.map(item => ({ ...item }));
+  }
+
+  getMutationRecipes(): MutationRecipe[] {
+    return [...this.mutationRecipes];
+  }
+
+  getAvailableMutations(): MutationRecipe[] {
+    return this.mutationRecipes.filter(recipe => {
+      return recipe.inputs.every(input => {
+        return this.getItemCount(input.tier, input.color) >= input.count;
+      });
+    });
+  }
+
+  canMutate(): boolean {
+    return this.getAvailableMutations().length > 0;
+  }
+
+  tryMutate(tier: PetalTier, color1: PetalColor, color2: PetalColor): MutationResult {
+    const recipe = this.mutationRecipes.find(r =>
+      r.inputs.length === 2 &&
+      r.inputs.some(input => input.tier === tier && input.color === color1 && input.count === 1) &&
+      r.inputs.some(input => input.tier === tier && input.color === color2 && input.count === 1)
+    );
+
+    if (!recipe) {
+      return { success: false, message: '找不到异变配方' };
+    }
+
+    for (const input of recipe.inputs) {
+      if (this.getItemCount(input.tier, input.color) < input.count) {
+        return {
+          success: false,
+          message: `材料不足：需要 ${PETAL_TIER_NAMES[input.tier]}(${input.color})`
+        };
+      }
+    }
+
+    for (const input of recipe.inputs) {
+      this.removeFromInventory(input.tier, input.color, input.count);
+    }
+
+    this.addToInventory(recipe.output.tier, recipe.output.color, recipe.output.variant);
+    this.mutationCount++;
+
+    return {
+      success: true,
+      output: recipe.output,
+      message: `异变成功！获得 ${PETAL_VARIANT_NAMES[recipe.output.variant]}${PETAL_TIER_NAMES[recipe.output.tier]}`
+    };
+  }
+
+  tryMutateAll(): MutationResult[] {
+    const results: MutationResult[] = [];
+    let mutated = true;
+
+    while (mutated) {
+      mutated = false;
+      const available = this.getAvailableMutations();
+      if (available.length === 0) break;
+
+      const recipe = available[0];
+      const input1 = recipe.inputs[0];
+      const input2 = recipe.inputs[1];
+
+      const result = this.tryMutate(input1.tier, input1.color, input2.color);
+      results.push(result);
+      if (result.success) {
+        mutated = true;
+      }
+    }
+
+    return results;
+  }
+
+  getMutationCount(): number {
+    return this.mutationCount;
+  }
+
+  getVariantItemCount(variant: PetalVariant): number {
+    return this.inventory
+      .filter(i => i.variant === variant)
+      .reduce((sum, i) => sum + i.count, 0);
+  }
+
+  getVariantHighestTier(variant: PetalVariant): PetalTier | null {
+    let highest: PetalTier | null = null;
+    for (let tier: PetalTier = 5; tier >= 1; tier = (tier - 1) as PetalTier) {
+      if (this.inventory.some(i => i.tier === tier && i.variant === variant && i.count > 0)) {
+        highest = tier;
+        break;
+      }
+    }
+    return highest;
+  }
+
+  getVariantItems(): InventoryItem[] {
+    return this.inventory.filter(i => i.variant !== undefined);
   }
 }

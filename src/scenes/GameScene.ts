@@ -12,7 +12,12 @@ import {
   Petal,
   PetalTier,
   PetalColor,
+  PetalVariant,
   PETAL_COLORS,
+  PETAL_VARIANTS,
+  PETAL_VARIANT_NAMES,
+  PETAL_VARIANT_COLOR_MAP,
+  PETAL_VARIANT_EMOJI,
   GameState,
   Petal as PetalType,
   RegionId,
@@ -64,6 +69,12 @@ export class GameScene extends Phaser.Scene {
   private autoFeedStatusText!: Phaser.GameObjects.Text;
   private saveStatusText!: Phaser.GameObjects.Text;
 
+  private mutationCount: number = 0;
+  private mutationButton!: Phaser.GameObjects.Container;
+  private mutationPanel!: Phaser.GameObjects.Container;
+  private mutationPanelVisible: boolean = false;
+  private variantSlots: Map<string, Phaser.GameObjects.Container> = new Map();
+
   private loadingGameState: boolean = false;
 
   private unlockedRegions: RegionId[] = ['initial'];
@@ -109,6 +120,8 @@ export class GameScene extends Phaser.Scene {
     this.createInventory();
     this.createBackButton();
     this.createAutoFeedButton();
+    this.createMutationButton();
+    this.createMutationPanel();
     this.createSaveStatus();
     this.playerController.create(this.cameras.main.width / 2, this.cameras.main.height - 450);
 
@@ -582,7 +595,7 @@ export class GameScene extends Phaser.Scene {
     }).setOrigin(0.5);
     this.inventoryPanel.add(title);
 
-    const subtitle = this.add.text(0, -40, '3个同色→升级 | 彩虹2个→升级 | 粉蓝紫各1→彩虹', {
+    const subtitle = this.add.text(0, -40, '3个同色→升级 | 彩虹2个→升级 | 粉蓝紫各1→彩虹 | 异色→异变', {
       fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
       fontSize: '16px',
       color: '#a78bfa'
@@ -764,6 +777,288 @@ export class GameScene extends Phaser.Scene {
     this.updateInventoryDisplay();
   }
 
+  private createMutationButton(): void {
+    this.mutationButton = this.add.container(GAME_WIDTH / 2, 260);
+
+    const btnBg = this.add.graphics();
+    btnBg.fillStyle(0x7c3aed, 0.9);
+    btnBg.fillRoundedRect(-80, -18, 160, 36, 18);
+    btnBg.lineStyle(2, 0xfbbf24, 0.8);
+    btnBg.strokeRoundedRect(-80, -18, 160, 36, 18);
+    this.mutationButton.add(btnBg);
+    this.mutationButton.setData('bg', btnBg);
+
+    const btnText = this.add.text(0, 0, '🧬 异变合成', {
+      fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+      fontSize: '18px',
+      color: '#fde68a',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.mutationButton.add(btnText);
+    this.mutationButton.setData('text', btnText);
+
+    this.mutationButton.setSize(160, 36);
+    this.mutationButton.setInteractive();
+    this.mutationButton.on('pointerdown', () => this.toggleMutationPanel());
+
+    this.startMutationButtonGlow();
+  }
+
+  private startMutationButtonGlow(): void {
+    this.time.addEvent({
+      delay: 600,
+      loop: true,
+      callback: () => {
+        if (this.isCompleted) return;
+        const canMutate = this.synthesisSystem.canMutate();
+        const bg = this.mutationButton.getData('bg') as Phaser.GameObjects.Graphics;
+        if (bg) {
+          bg.clear();
+          const time = this.time.now / 1000;
+          if (canMutate) {
+            const pulse = 0.5 + Math.sin(time * 4) * 0.3;
+            bg.fillStyle(0x9333ea, 0.8 + pulse * 0.2);
+            bg.fillRoundedRect(-80, -18, 160, 36, 18);
+            bg.lineStyle(3, 0xfbbf24, 0.7 + pulse * 0.3);
+            bg.strokeRoundedRect(-80, -18, 160, 36, 18);
+          } else {
+            bg.fillStyle(0x4c1d95, 0.7);
+            bg.fillRoundedRect(-80, -18, 160, 36, 18);
+            bg.lineStyle(2, 0x7c3aed, 0.5);
+            bg.strokeRoundedRect(-80, -18, 160, 36, 18);
+          }
+        }
+      }
+    });
+  }
+
+  private createMutationPanel(): void {
+    this.mutationPanel = this.add.container(GAME_WIDTH / 2, GAME_HEIGHT - 500);
+    this.mutationPanel.setDepth(300);
+    this.mutationPanel.setAlpha(0);
+    this.mutationPanel.setVisible(false);
+
+    const panelBg = this.add.graphics();
+    panelBg.fillStyle(0x1e1b4b, 0.97);
+    panelBg.fillRoundedRect(-350, -140, 700, 280, 22);
+    panelBg.lineStyle(3, 0xfbbf24, 0.8);
+    panelBg.strokeRoundedRect(-350, -140, 700, 280, 22);
+    this.mutationPanel.add(panelBg);
+
+    const title = this.add.text(0, -115, '🧬 异变配方 · 同阶异色融合', {
+      fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+      fontSize: '22px',
+      color: '#fde68a',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.mutationPanel.add(title);
+
+    const subtitle = this.add.text(0, -88, '同阶不同属性花瓣各1 → 异变品种(升阶)', {
+      fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+      fontSize: '16px',
+      color: '#a78bfa'
+    }).setOrigin(0.5);
+    this.mutationPanel.add(subtitle);
+
+    const variants: PetalVariant[] = ['flame', 'frost', 'shadow', 'nature'];
+    variants.forEach((variant, i) => {
+      const slotX = -240 + i * 160;
+      const slotY = -20;
+      const slot = this.add.container(slotX, slotY);
+
+      const slotBg = this.add.graphics();
+      const variantColor = PETAL_VARIANT_COLOR_MAP[variant];
+      slotBg.fillStyle(0x312e81, 0.7);
+      slotBg.fillRoundedRect(-70, -50, 140, 100, 14);
+      slotBg.lineStyle(2, variantColor, 0.6);
+      slotBg.strokeRoundedRect(-70, -50, 140, 100, 14);
+      slot.add(slotBg);
+      slot.setData('bg', slotBg);
+
+      const emoji = this.add.text(0, -30, PETAL_VARIANT_EMOJI[variant], {
+        fontSize: '28px'
+      }).setOrigin(0.5);
+      slot.add(emoji);
+
+      const nameText = this.add.text(0, 10, PETAL_VARIANT_NAMES[variant], {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '18px',
+        color: '#fef3c7',
+        fontStyle: 'bold'
+      }).setOrigin(0.5);
+      slot.add(nameText);
+
+      const countText = this.add.text(0, 35, '×0', {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '16px',
+        color: '#a78bfa'
+      }).setOrigin(0.5);
+      slot.add(countText);
+      slot.setData('countText', countText);
+
+      slot.setSize(140, 100);
+      this.variantSlots.set(variant, slot);
+      this.mutationPanel.add(slot);
+    });
+
+    const oneClickBtn = this.add.container(0, 110);
+    const clickBg = this.add.graphics();
+    clickBg.fillStyle(0x9333ea, 0.9);
+    clickBg.fillRoundedRect(-100, -22, 200, 44, 22);
+    clickBg.lineStyle(2, 0xfbbf24, 0.8);
+    clickBg.strokeRoundedRect(-100, -22, 200, 44, 22);
+    oneClickBtn.add(clickBg);
+
+    const clickText = this.add.text(0, 0, '⚡ 一键异变', {
+      fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+      fontSize: '20px',
+      color: '#fde68a',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    oneClickBtn.add(clickText);
+
+    oneClickBtn.setSize(200, 44);
+    oneClickBtn.setInteractive();
+    oneClickBtn.on('pointerdown', () => this.onMutateAllClick());
+    this.mutationPanel.add(oneClickBtn);
+
+    const closeBtn = this.add.container(330, -120);
+    const closeBg = this.add.graphics();
+    closeBg.fillStyle(0x4c1d95, 0.9);
+    closeBg.fillCircle(0, 0, 18);
+    closeBg.lineStyle(2, 0xfbbf24, 0.8);
+    closeBg.strokeCircle(0, 0, 18);
+    closeBtn.add(closeBg);
+
+    const closeText = this.add.text(0, 0, '✕', {
+      fontSize: '18px',
+      color: '#fde68a',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    closeBtn.add(closeText);
+
+    closeBtn.setSize(36, 36);
+    closeBtn.setInteractive();
+    closeBtn.on('pointerdown', () => this.toggleMutationPanel());
+    this.mutationPanel.add(closeBtn);
+  }
+
+  private toggleMutationPanel(): void {
+    this.audioManager.playClick();
+
+    if (this.mutationPanelVisible) {
+      this.tweens.add({
+        targets: this.mutationPanel,
+        alpha: 0,
+        y: GAME_HEIGHT - 460,
+        duration: 250,
+        ease: 'Sine.easeIn',
+        onComplete: () => {
+          this.mutationPanel.setVisible(false);
+        }
+      });
+      this.mutationPanelVisible = false;
+    } else {
+      this.mutationPanel.setVisible(true);
+      this.mutationPanel.setAlpha(0);
+      this.mutationPanel.setY(GAME_HEIGHT - 460);
+      this.updateMutationPanelDisplay();
+      this.tweens.add({
+        targets: this.mutationPanel,
+        alpha: 1,
+        y: GAME_HEIGHT - 500,
+        duration: 300,
+        ease: 'Back.easeOut'
+      });
+      this.mutationPanelVisible = true;
+    }
+  }
+
+  private updateMutationPanelDisplay(): void {
+    PETAL_VARIANTS.forEach(variant => {
+      const slot = this.variantSlots.get(variant);
+      if (!slot) return;
+      const countText = slot.getData('countText') as Phaser.GameObjects.Text;
+      if (countText) {
+        const count = this.synthesisSystem.getVariantItemCount(variant);
+        countText.setText(`×${count}`);
+        countText.setColor(count > 0 ? '#fde68a' : '#a78bfa');
+      }
+    });
+  }
+
+  private onMutateAllClick(): void {
+    if (this.isSynthesizing || this.animationManager.isPlaying()) return;
+
+    const availableMutations = this.synthesisSystem.getAvailableMutations();
+    if (availableMutations.length === 0) {
+      this.audioManager.playSynthesisFail();
+      this.showGuideText('异变材料不足，需要同阶异色花瓣', 3000);
+      return;
+    }
+
+    this.isSynthesizing = true;
+
+    const results = this.synthesisSystem.tryMutateAll();
+    const successCount = results.filter(r => r.success).length;
+
+    if (successCount > 0) {
+      this.mutationCount += successCount;
+      this.synthesisCount += successCount;
+      this.audioManager.playSynthesisChain(0, successCount, 3);
+
+      let totalScore = 0;
+      let totalProgress = 0;
+      results.forEach(result => {
+        if (result.success && result.output) {
+          const baseScore = result.output.tier * 150 * result.output.count;
+          const baseProgress = result.output.tier * 5 * result.output.count;
+          totalScore += baseScore;
+          totalProgress += baseProgress;
+        }
+      });
+
+      this.score += totalScore;
+      this.awakeProgress = Math.min(AWAKEN_GOAL, this.awakeProgress + totalProgress);
+      this.updateScore();
+      this.updateProgressBar();
+      this.checkRegionUnlocks();
+
+      if (totalScore > 0) {
+        this.rewardSources.push({
+          label: `🧬 异变合成·x${successCount}`,
+          score: totalScore,
+          color: 'purple'
+        });
+      }
+
+      this.updateInventoryDisplay();
+      this.updateMutationPanelDisplay();
+
+      this.showGuideText(`🧬 异变成功！${successCount} 次异变 +${totalScore}分`, 3000);
+
+      this.animationManager.playSynthesisEffectChain(
+        GAME_WIDTH / 2,
+        GAME_HEIGHT - 500,
+        'purple',
+        0,
+        successCount,
+        3
+      );
+
+      this.time.delayedCall(1500, () => {
+        this.isSynthesizing = false;
+        if (this.awakeProgress >= AWAKEN_GOAL && !this.isCompleted) {
+          this.isCompleted = true;
+          this.time.delayedCall(600, () => this.endGame(true));
+        }
+      });
+    } else {
+      this.isSynthesizing = false;
+      this.audioManager.playSynthesisFail();
+    }
+  }
+
   private createSaveStatus(): void {
     this.saveStatusText = this.add.text(GAME_WIDTH / 2, 227, '💾 自动保存中', {
       fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
@@ -813,7 +1108,8 @@ export class GameScene extends Phaser.Scene {
       rarePetalsCollected: this.rarePetalsCollected,
       appliedEventBonusScore: this.eventBonusScore,
       appliedEventRarePetals: this.eventRarePetalsGranted,
-      appliedEventSynthesisBonus: this.eventSynthesisBonus
+      appliedEventSynthesisBonus: this.eventSynthesisBonus,
+      mutationCount: this.mutationCount
     };
 
     const petalDataArray: PetalType[] = [];
@@ -979,7 +1275,7 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private createPetalVisual(container: Phaser.GameObjects.Container, color: PetalColor, tier: PetalTier): void {
+  private createPetalVisual(container: Phaser.GameObjects.Container, color: PetalColor, tier: PetalTier, variant?: PetalVariant): void {
     container.removeAll(true);
 
     const colorMap: Record<PetalColor, number> = {
@@ -990,32 +1286,63 @@ export class GameScene extends Phaser.Scene {
       rainbow: 0xffffff
     };
 
-    const glowColor = colorMap[color];
+    const glowColor = variant ? PETAL_VARIANT_COLOR_MAP[variant] : colorMap[color];
     const size = 18 + tier * 4;
 
-    const glow = this.add.graphics();
-    glow.fillStyle(glowColor, 0.25);
-    glow.fillCircle(0, 0, size + 18);
-    glow.fillStyle(glowColor, 0.4);
-    glow.fillCircle(0, 0, size + 8);
-    container.add(glow);
+    if (variant) {
+      const outerGlow = this.add.graphics();
+      outerGlow.fillStyle(colorMap[color], 0.15);
+      outerGlow.fillCircle(0, 0, size + 26);
+      outerGlow.fillStyle(glowColor, 0.3);
+      outerGlow.fillCircle(0, 0, size + 18);
+      outerGlow.fillStyle(glowColor, 0.45);
+      outerGlow.fillCircle(0, 0, size + 8);
+      container.add(outerGlow);
+    } else {
+      const glow = this.add.graphics();
+      glow.fillStyle(glowColor, 0.25);
+      glow.fillCircle(0, 0, size + 18);
+      glow.fillStyle(glowColor, 0.4);
+      glow.fillCircle(0, 0, size + 8);
+      container.add(glow);
+    }
 
     const petal = this.add.graphics();
-    petal.fillStyle(glowColor, 1);
-    for (let i = 0; i < 5; i++) {
-      const angle = (i / 5) * Math.PI * 2 - Math.PI / 2;
-      const px = Math.cos(angle) * size;
-      const py = Math.sin(angle) * size;
-      petal.slice(px, py, size * 0.65, 0, Math.PI * 2);
+    if (variant) {
+      petal.fillStyle(colorMap[color], 0.7);
+      for (let i = 0; i < 5; i++) {
+        const angle = (i / 5) * Math.PI * 2 - Math.PI / 2;
+        const px = Math.cos(angle) * size;
+        const py = Math.sin(angle) * size;
+        petal.slice(px, py, size * 0.65, 0, Math.PI * 2);
+      }
+      petal.fillPath();
+      petal.fillStyle(glowColor, 0.85);
+      for (let i = 0; i < 5; i++) {
+        const angle = (i / 5) * Math.PI * 2 - Math.PI / 2;
+        const px = Math.cos(angle) * size * 0.7;
+        const py = Math.sin(angle) * size * 0.7;
+        petal.slice(px, py, size * 0.45, 0, Math.PI * 2);
+      }
+      petal.fillPath();
+    } else {
+      petal.fillStyle(glowColor, 1);
+      for (let i = 0; i < 5; i++) {
+        const angle = (i / 5) * Math.PI * 2 - Math.PI / 2;
+        const px = Math.cos(angle) * size;
+        const py = Math.sin(angle) * size;
+        petal.slice(px, py, size * 0.65, 0, Math.PI * 2);
+      }
+      petal.fillPath();
     }
-    petal.fillPath();
-    petal.fillStyle(0xffffff, 0.85);
+
+    petal.fillStyle(0xffffff, variant ? 0.9 : 0.85);
     petal.fillCircle(0, 0, size * 0.35);
     container.add(petal);
 
     for (let t = 2; t <= tier; t++) {
       const star = this.add.graphics();
-      star.fillStyle(0xfef08a, 1);
+      star.fillStyle(variant ? glowColor : 0xfef08a, 1);
       const sa = ((t - 2) / 4) * Math.PI * 2;
       star.fillCircle(Math.cos(sa) * (size + 12), Math.sin(sa) * (size + 12), 3);
       container.add(star);
@@ -1418,7 +1745,10 @@ export class GameScene extends Phaser.Scene {
       const totalCount = this.synthesisSystem.getColorTotalCount(color);
 
       if (highestTier && totalCount > 0) {
-        this.createPetalVisual(slot, color, highestTier);
+        const variantItems = this.synthesisSystem.getVariantItems().filter(i => i.color === color);
+        const displayVariant = variantItems.length > 0 ? variantItems[0].variant : undefined;
+
+        this.createPetalVisual(slot, color, highestTier, displayVariant);
         slot.setScale(0.6);
 
         const countBg = this.add.graphics();
@@ -1443,6 +1773,13 @@ export class GameScene extends Phaser.Scene {
           padding: { x: 8, y: 2 }
         }).setOrigin(0.5);
         slot.add(tierText);
+
+        if (displayVariant) {
+          const variantBadge = this.add.text(-45, -45, PETAL_VARIANT_EMOJI[displayVariant], {
+            fontSize: '14px'
+          }).setOrigin(0.5);
+          slot.add(variantBadge);
+        }
       } else {
         const emptyText = this.add.text(0, 10, '空', {
           fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
@@ -1452,6 +1789,8 @@ export class GameScene extends Phaser.Scene {
         slot.add(emptyText);
       }
     });
+
+    this.updateMutationPanelDisplay();
   }
 
   private endGame(victory: boolean): void {

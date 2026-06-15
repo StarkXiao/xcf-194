@@ -2,10 +2,13 @@ export type PetalTier = 1 | 2 | 3 | 4 | 5;
 
 export type PetalColor = 'pink' | 'blue' | 'purple' | 'gold' | 'rainbow';
 
+export type PetalVariant = 'flame' | 'frost' | 'shadow' | 'nature';
+
 export interface Petal {
   id: string;
   tier: PetalTier;
   color: PetalColor;
+  variant?: PetalVariant;
   x: number;
   y: number;
   collected: boolean;
@@ -14,7 +17,14 @@ export interface Petal {
 export interface InventoryItem {
   tier: PetalTier;
   color: PetalColor;
+  variant?: PetalVariant;
   count: number;
+}
+
+export interface MutationRecipe {
+  inputs: { tier: PetalTier; color: PetalColor; count: number }[];
+  output: { tier: PetalTier; color: PetalColor; variant: PetalVariant; count: number };
+  name: string;
 }
 
 export interface GameState {
@@ -31,6 +41,7 @@ export interface GameState {
   appliedEventBonusScore: number;
   appliedEventRarePetals: number;
   appliedEventSynthesisBonus: number;
+  mutationCount: number;
 }
 
 export interface SaveData {
@@ -61,6 +72,7 @@ export interface SynthesisLogEntry {
   color: PetalColor;
   outputTier: PetalTier;
   outputColor: PetalColor;
+  outputVariant?: PetalVariant;
   t: number;
 }
 
@@ -153,6 +165,66 @@ export const PETAL_COLOR_MAP: Record<PetalColor, number> = {
   gold: 0xfcd34d,
   rainbow: 0xffffff
 };
+
+export const PETAL_VARIANTS: PetalVariant[] = ['flame', 'frost', 'shadow', 'nature'];
+
+export const PETAL_VARIANT_NAMES: Record<PetalVariant, string> = {
+  flame: '烈焰',
+  frost: '寒霜',
+  shadow: '暗影',
+  nature: '自然'
+};
+
+export const PETAL_VARIANT_COLOR_MAP: Record<PetalVariant, number> = {
+  flame: 0xff4500,
+  frost: 0x00bfff,
+  shadow: 0x4b0082,
+  nature: 0x32cd32
+};
+
+export const PETAL_VARIANT_EMOJI: Record<PetalVariant, string> = {
+  flame: '🔥',
+  frost: '❄️',
+  shadow: '🌑',
+  nature: '🌿'
+};
+
+export const MUTATION_RECIPES_CONFIG: {
+  inputs: { color: PetalColor; count: number }[];
+  output: { color: PetalColor; variant: PetalVariant };
+  name: string;
+}[] = [
+  {
+    inputs: [{ color: 'pink', count: 1 }, { color: 'gold', count: 1 }],
+    output: { color: 'pink', variant: 'flame' },
+    name: '粉+金 → 烈焰粉'
+  },
+  {
+    inputs: [{ color: 'blue', count: 1 }, { color: 'purple', count: 1 }],
+    output: { color: 'blue', variant: 'frost' },
+    name: '蓝+紫 → 寒霜蓝'
+  },
+  {
+    inputs: [{ color: 'purple', count: 1 }, { color: 'blue', count: 1 }],
+    output: { color: 'purple', variant: 'shadow' },
+    name: '紫+蓝 → 暗影紫'
+  },
+  {
+    inputs: [{ color: 'pink', count: 1 }, { color: 'blue', count: 1 }],
+    output: { color: 'pink', variant: 'nature' },
+    name: '粉+蓝 → 自然粉'
+  },
+  {
+    inputs: [{ color: 'gold', count: 1 }, { color: 'purple', count: 1 }],
+    output: { color: 'gold', variant: 'flame' },
+    name: '金+紫 → 烈焰金'
+  },
+  {
+    inputs: [{ color: 'gold', count: 1 }, { color: 'pink', count: 1 }],
+    output: { color: 'gold', variant: 'nature' },
+    name: '金+粉 → 自然金'
+  }
+];
 
 export const PETAL_TIER_NAMES: Record<PetalTier, string> = {
   1: '微光花瓣',

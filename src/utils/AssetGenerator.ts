@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { PetalVariant, PETAL_VARIANT_COLOR_MAP, PETAL_VARIANT_EMOJI } from '../types';
 
 export class AssetGenerator {
   static generatedTextures: Map<string, HTMLCanvasElement> = new Map();
@@ -6,6 +7,7 @@ export class AssetGenerator {
   static generateAll(): void {
     this.generateLoverSleeping();
     this.generateLoverAwake();
+    this.generateVariantPetals();
   }
 
   static registerTextures(scene: Phaser.Scene): void {
@@ -328,6 +330,62 @@ export class AssetGenerator {
     ctx.restore();
 
     ctx.restore();
+  }
+
+  private static generateVariantPetals(): void {
+    const variants: PetalVariant[] = ['flame', 'frost', 'shadow', 'nature'];
+    variants.forEach(variant => {
+      const w = 120;
+      const h = 120;
+      const key = `petal_variant_${variant}`;
+      const { canvas, ctx } = this.createCanvas(key, w, h);
+
+      ctx.save();
+      ctx.translate(w / 2, h / 2);
+
+      const variantColor = PETAL_VARIANT_COLOR_MAP[variant];
+      const colorHex = '#' + variantColor.toString(16).padStart(6, '0');
+
+      const outerGradient = ctx.createRadialGradient(0, 0, 10, 0, 0, 55);
+      outerGradient.addColorStop(0, colorHex + '80');
+      outerGradient.addColorStop(0.5, colorHex + '40');
+      outerGradient.addColorStop(1, colorHex + '00');
+      ctx.fillStyle = outerGradient;
+      ctx.beginPath();
+      ctx.arc(0, 0, 55, 0, Math.PI * 2);
+      ctx.fill();
+
+      for (let i = 0; i < 5; i++) {
+        const angle = (i / 5) * Math.PI * 2 - Math.PI / 2;
+        const px = Math.cos(angle) * 22;
+        const py = Math.sin(angle) * 22;
+
+        const petalGradient = ctx.createRadialGradient(px, py, 2, px, py, 16);
+        petalGradient.addColorStop(0, '#ffffff');
+        petalGradient.addColorStop(0.3, colorHex + 'cc');
+        petalGradient.addColorStop(1, colorHex + '66');
+        ctx.fillStyle = petalGradient;
+        ctx.beginPath();
+        ctx.arc(px, py, 14, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      const centerGradient = ctx.createRadialGradient(0, 0, 2, 0, 0, 10);
+      centerGradient.addColorStop(0, '#ffffff');
+      centerGradient.addColorStop(0.5, colorHex);
+      centerGradient.addColorStop(1, '#000000');
+      ctx.fillStyle = centerGradient;
+      ctx.beginPath();
+      ctx.arc(0, 0, 10, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.font = '16px serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(PETAL_VARIANT_EMOJI[variant], 0, 0);
+
+      ctx.restore();
+    });
   }
 
   private static drawStar(
