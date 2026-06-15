@@ -804,21 +804,21 @@ export class EmotionAudioSystem {
       clearInterval(this.updateTimer);
       this.updateTimer = null;
     }
-    this.crossFade?.stopAll();
-    const dur = 1200;
-    this.bgmLayer?.stop(dur, this.crossFade!, () => {
-      this.bgmLayer?.destroy();
-    });
-    setTimeout(() => {
-      this.ambientLayer?.stop(dur * 0.7, this.crossFade!, () => {
-        this.ambientLayer?.destroy();
-        setTimeout(() => {
-          this.crossFade?.destroy();
-          try { this.masterGain?.disconnect(); } catch {}
-          this.masterGain = null;
-          this.initialized = false;
-        }, 300);
-      });
-    }, 400);
+    try { this.crossFade?.stopAll(); } catch {}
+    try { this.bgmLayer?.stop(0, this.crossFade!); } catch {}
+    try { this.bgmLayer?.destroy(); } catch {}
+    try { this.ambientLayer?.stop(0, this.crossFade!); } catch {}
+    try { this.ambientLayer?.destroy(); } catch {}
+    try { this.crossFade?.destroy(); } catch {}
+    try { this.masterGain?.disconnect(); } catch {}
+    this.bgmLayer = null;
+    this.ambientLayer = null;
+    this.crossFade = null;
+    this.masterGain = null;
+    this.audioContext = null;
+    this.scene = null;
+    this.initialized = false;
+    this.currentEmotionState = EmotionState.COLLECTING;
+    this.startTime = 0;
   }
 }
