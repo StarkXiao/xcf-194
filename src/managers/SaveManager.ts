@@ -213,7 +213,7 @@ export class SaveManager {
     }
   }
 
-  loadGameState(): { gameState: GameState; petals: Petal[] } | null {
+  loadGameState(): { gameState: GameState; petals: Petal[]; isLegacyEventSave: boolean } | null {
     try {
       const raw = localStorage.getItem(GAME_STATE_KEY);
       if (!raw) {
@@ -224,12 +224,18 @@ export class SaveManager {
       const parsed = JSON.parse(raw) as GameSaveData;
       const savedVersion = parsed.version ?? '1.0.0';
 
+      const hasAppliedScore = typeof (parsed.gameState as any).appliedEventBonusScore === 'number';
+      const hasAppliedRare = typeof (parsed.gameState as any).appliedEventRarePetals === 'number';
+      const hasAppliedSynth = typeof (parsed.gameState as any).appliedEventSynthesisBonus === 'number';
+      const isLegacyEventSave = !hasAppliedScore || !hasAppliedRare || !hasAppliedSynth;
+
       const migrated = this.migrateGameState(parsed, savedVersion);
 
-      console.log('[SaveManager] 游戏状态已加载，版本:', savedVersion, '→', this.currentVersion);
+      console.log('[SaveManager] 游戏状态已加载，版本:', savedVersion, '→', this.currentVersion, '旧存档迁移:', isLegacyEventSave);
       return {
         gameState: migrated.gameState,
-        petals: migrated.gameState.petals
+        petals: migrated.gameState.petals,
+        isLegacyEventSave
       };
     } catch (e) {
       console.warn('[SaveManager] 加载游戏状态失败', e);

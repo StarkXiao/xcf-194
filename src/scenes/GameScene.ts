@@ -848,7 +848,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const { gameState, petals } = saved;
+    const { gameState, petals, isLegacyEventSave } = saved;
 
     this.score = gameState.score;
     this.awakeProgress = gameState.awakeProgress;
@@ -860,15 +860,27 @@ export class GameScene extends Phaser.Scene {
     this.rarePetalsCollected = gameState.rarePetalsCollected ?? 0;
     this.currentBgRegion = this.getActiveRegionConfig().id;
 
-    this.loadedAppliedEventBonus = gameState.appliedEventBonusScore ?? 0;
-    this.loadedAppliedEventRare = gameState.appliedEventRarePetals ?? 0;
-    this.loadedAppliedEventSynth = gameState.appliedEventSynthesisBonus ?? 0;
+    const currentSave = this.saveManager.getCurrentSave();
 
-    console.log('[GameScene] 读档已应用活动奖励:', {
-      bonusScore: this.loadedAppliedEventBonus,
-      rare: this.loadedAppliedEventRare,
-      synth: this.loadedAppliedEventSynth
-    });
+    if (isLegacyEventSave) {
+      this.loadedAppliedEventBonus = currentSave.eventBonusScore;
+      this.loadedAppliedEventRare = currentSave.eventRarePetals;
+      this.loadedAppliedEventSynth = currentSave.eventSynthesisBonus;
+      console.log('[GameScene] 检测到旧存档，活动奖励已视为完全计入存档以避免重复叠加:', {
+        loadedAppliedEventBonus: this.loadedAppliedEventBonus,
+        loadedAppliedEventRare: this.loadedAppliedEventRare,
+        loadedAppliedEventSynth: this.loadedAppliedEventSynth
+      });
+    } else {
+      this.loadedAppliedEventBonus = gameState.appliedEventBonusScore ?? 0;
+      this.loadedAppliedEventRare = gameState.appliedEventRarePetals ?? 0;
+      this.loadedAppliedEventSynth = gameState.appliedEventSynthesisBonus ?? 0;
+      console.log('[GameScene] 读档已应用活动奖励:', {
+        bonusScore: this.loadedAppliedEventBonus,
+        rare: this.loadedAppliedEventRare,
+        synth: this.loadedAppliedEventSynth
+      });
+    }
 
     this.synthesisSystem.setInventory(gameState.inventory);
 
