@@ -363,8 +363,10 @@ export class SynthesisSystem {
       return { success: false, fedCount: 0, items: [] };
     }
 
+    const snapshot = this.inventory.map(item => ({ ...item }));
+
     const fedItems: { tier: PetalTier; color: PetalColor; count: number }[] = [];
-    let totalFed = 0;
+    let targetAdded = 0;
 
     const lowerTiers: PetalTier[] = [];
     for (let t: PetalTier = 1; t < targetTier; t = (t + 1) as PetalTier) {
@@ -372,32 +374,35 @@ export class SynthesisSystem {
     }
 
     for (const tier of lowerTiers) {
-      if (totalFed >= deficit) break;
+      if (targetAdded >= deficit) break;
 
       const available = this.getItemCount(tier, targetColor);
-      if (available > 0) {
-        const toFeed = Math.min(available, deficit - totalFed);
-        this.removeFromInventory(tier, targetColor, toFeed);
-        this.addToInventory(targetTier, targetColor);
-
-        fedItems.push({ tier, color: targetColor, count: toFeed });
-        totalFed += toFeed;
-      }
-    }
-
-    if (totalFed > 0) {
-      const available = this.getItemCount(targetTier, targetColor);
       if (available >= needCount) {
-        return { success: true, fedCount: totalFed, items: fedItems };
+        const batches = Math.min(
+          Math.floor(available / needCount),
+          deficit - targetAdded
+        );
+
+        if (batches > 0) {
+          const consumed = batches * needCount;
+          this.removeFromInventory(tier, targetColor, consumed);
+
+          for (let b = 0; b < batches; b++) {
+            this.addToInventory(targetTier, targetColor);
+          }
+
+          fedItems.push({ tier, color: targetColor, count: consumed });
+          targetAdded += batches;
+        }
       }
     }
 
-    for (const item of fedItems) {
-      this.removeFromInventory(targetTier, targetColor, item.count);
-      for (let i = 0; i < item.count; i++) {
-        this.addToInventory(item.tier, item.color);
-      }
+    if (targetAdded >= deficit) {
+      const totalLowLevelConsumed = fedItems.reduce((sum, item) => sum + item.count, 0);
+      return { success: true, fedCount: totalLowLevelConsumed, items: fedItems };
     }
+
+    this.inventory = snapshot;
 
     return { success: false, fedCount: 0, items: [] };
   }
@@ -574,17 +579,20 @@ export class SynthesisSystem {
 
     if (currentCount >= needCount) return false;
 
+    const deficit = needCount - currentCount;
+
     const lowerTiers: PetalTier[] = [];
     for (let t: PetalTier = 1; t < tier; t = (t + 1) as PetalTier) {
       lowerTiers.unshift(t as PetalTier);
     }
 
-    let lowerTotal = 0;
+    let availableBatches = 0;
     for (const t of lowerTiers) {
-      lowerTotal += this.getItemCount(t, color);
+      const count = this.getItemCount(t, color);
+      availableBatches += Math.floor(count / needCount);
     }
 
-    return currentCount + lowerTotal >= needCount;
+    return availableBatches >= deficit;
   }
 
   setInventory(inventory: InventoryItem[]): void {
