@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { SaveManager } from '../managers/SaveManager';
 import { AudioManager } from '../managers/AudioManager';
+import { EventManager } from '../managers/EventManager';
 import {
   GAME_WIDTH,
   GAME_HEIGHT,
@@ -45,6 +46,7 @@ export class ResultScene extends Phaser.Scene {
   private resultData!: ResultData;
   private saveManager!: SaveManager;
   private audioManager!: AudioManager;
+  private eventManager!: EventManager;
   private scrollContainer!: Phaser.GameObjects.Container;
   private contentHeight: number = 0;
   private scrollY: number = 0;
@@ -62,6 +64,7 @@ export class ResultScene extends Phaser.Scene {
   create(): void {
     this.saveManager = SaveManager.getInstance();
     this.audioManager = AudioManager.getInstance(this);
+    this.eventManager = EventManager.getInstance();
 
     this.createBackground();
     this.createScrollableContent();
@@ -122,6 +125,7 @@ export class ResultScene extends Phaser.Scene {
     y = this.createSynthesisSection(y);
     y = this.createRewardSourceSection(y);
     y = this.createRegionSection(y);
+    y = this.createEventProgressSection(y);
     y = this.createSaveStatsSection(y);
 
     this.contentHeight = y + 40;
@@ -661,6 +665,121 @@ export class ResultScene extends Phaser.Scene {
     });
 
     return y + regionH + 15;
+  }
+
+  private createEventProgressSection(startY: number): number {
+    if (!this.eventManager.isEventActive()) return startY;
+
+    const event = this.eventManager.getCurrentEvent();
+    const progress = this.eventManager.getEventProgress();
+    if (!event || !progress) return startY;
+
+    const y = startY;
+    const panelX = GAME_WIDTH / 2 - 320;
+    const panelW = 640;
+    const panelH = 260;
+
+    const panel = this.add.graphics();
+    panel.fillStyle(0x1e1b4b, 0.92);
+    panel.fillRoundedRect(panelX, y, panelW, panelH, 20);
+    panel.lineStyle(2, 0xfbbf24, 0.6);
+    panel.strokeRoundedRect(panelX, y, panelW, panelH, 20);
+    this.scrollContainer.add(panel);
+
+    this.scrollContainer.add(
+      this.add.text(GAME_WIDTH / 2, y + 30, `${event.banner} 活动进度`, {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '24px',
+        color: '#fde68a',
+        fontStyle: 'bold'
+      }).setOrigin(0.5)
+    );
+
+    const stageProgress = this.eventManager.getStageProgressValue();
+    const currentStage = this.eventManager.getCurrentStage();
+    const totalStages = this.eventManager.getTotalStageCount();
+    const completedTasks = this.eventManager.getCompletedTaskCount();
+    const totalTasks = this.eventManager.getTotalTaskCount();
+    const hasUnclaimed = this.eventManager.hasUnclaimedRewards();
+
+    const timeRemaining = this.eventManager.getTimeRemaining();
+    const timeStr = this.eventManager.formatTimeRemaining(timeRemaining);
+
+    const stats = [
+      { label: '⏰ 活动剩余', value: timeStr, color: '#86efac' },
+      { label: '🏆 阶段进度', value: `${stageProgress} / 第${currentStage}/${totalStages}阶`, color: '#fbbf24' },
+      { label: '📋 任务完成', value: `${completedTasks} / ${totalTasks}`, color: '#93c5fd' }
+    ];
+
+    stats.forEach((stat, i) => {
+      const sy = y + 75 + i * 42;
+      this.scrollContainer.add(
+        this.add.text(panelX + 40, sy, stat.label, {
+          fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+          fontSize: '18px',
+          color: stat.color
+        }).setOrigin(0, 0.5)
+      );
+      this.scrollContainer.add(
+        this.add.text(panelX + panelW - 40, sy, stat.value, {
+          fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+          fontSize: '20px',
+          color: '#fef3c7',
+          fontStyle: 'bold'
+        }).setOrigin(1, 0.5)
+      );
+    });
+
+    if (hasUnclaimed) {
+      const btnBg = this.add.graphics();
+      btnBg.fillStyle(0x059669, 0.9);
+      btnBg.fillRoundedRect(GAME_WIDTH / 2 - 100, y + 205, 200, 44, 22);
+      btnBg.lineStyle(2, 0x34d399, 0.8);
+      btnBg.strokeRoundedRect(GAME_WIDTH / 2 - 100, y + 205, 200, 44, 22);
+      btnBg.setInteractive(
+        new Phaser.Geom.Rectangle(GAME_WIDTH / 2 - 100, y + 205, 200, 44),
+        Phaser.Geom.Rectangle.Contains
+      );
+      this.scrollContainer.add(btnBg);
+
+      const btnText = this.add.text(GAME_WIDTH / 2, y + 227, '🎁 领取奖励', {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '20px',
+        color: '#fef3c7',
+        fontStyle: 'bold'
+      }).setOrigin(0.5);
+      this.scrollContainer.add(btnText);
+
+      btnBg.on('pointerover', () => {
+        btnBg.clear();
+        btnBg.fillStyle(0x059669, 1);
+        btnBg.fillRoundedRect(GAME_WIDTH / 2 - 105, y + 200, 210, 54, 27);
+        btnBg.lineStyle(2, 0x86efac, 1);
+        btnBg.strokeRoundedRect(GAME_WIDTH / 2 - 105, y + 200, 210, 54, 27);
+        btnText.setScale(1.05);
+      });
+
+      btnBg.on('pointerout', () => {
+        btnBg.clear();
+        btnBg.fillStyle(0x059669, 0.9);
+        btnBg.fillRoundedRect(GAME_WIDTH / 2 - 100, y + 205, 200, 44, 22);
+        btnBg.lineStyle(2, 0x34d399, 0.8);
+        btnBg.strokeRoundedRect(GAME_WIDTH / 2 - 100, y + 205, 200, 44, 22);
+        btnText.setScale(1);
+      });
+
+      btnBg.on('pointerdown', () => {
+        btnText.setScale(0.95);
+      });
+
+      btnBg.on('pointerup', () => {
+        btnText.setScale(1);
+        this.audioManager.playClick();
+        this.scene.start('EventScene');
+      });
+    }
+
+    return y + panelH + 15;
   }
 
   private createSaveStatsSection(startY: number): number {

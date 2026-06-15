@@ -233,3 +233,178 @@ export const GAME_WIDTH = 750;
 export const GAME_HEIGHT = 1334;
 
 export const AWAKEN_GOAL = 100;
+
+export type EventRewardType = 'score' | 'petal' | 'rare_petal' | 'synthesis_bonus' | 'exclusive_title';
+
+export interface EventTask {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  type: 'collect' | 'synthesis' | 'score' | 'play_time' | 'region' | 'rare';
+  target: number;
+  rewardType: EventRewardType;
+  rewardValue: number;
+  rewardDetail?: string;
+}
+
+export interface EventStageReward {
+  id: string;
+  stage: number;
+  name: string;
+  description: string;
+  requirement: number;
+  rewardType: EventRewardType;
+  rewardValue: number;
+  rewardDetail?: string;
+}
+
+export interface EventConfig {
+  id: string;
+  name: string;
+  description: string;
+  banner: string;
+  startTime: number;
+  endTime: number;
+  tasks: EventTask[];
+  stageRewards: EventStageReward[];
+  stageProgressType: 'score' | 'petals_collected' | 'synthesis_count';
+}
+
+export interface EventTaskProgress {
+  taskId: string;
+  current: number;
+  claimed: boolean;
+  completed: boolean;
+}
+
+export interface EventStageProgress {
+  stageId: string;
+  claimed: boolean;
+  completed: boolean;
+}
+
+export interface EventProgress {
+  eventId: string;
+  totalScore: number;
+  totalPetalsCollected: number;
+  totalSynthesisCount: number;
+  taskProgress: EventTaskProgress[];
+  stageProgress: EventStageProgress[];
+  lastUpdated: number;
+}
+
+export interface EventSaveData {
+  currentEventId: string | null;
+  events: Record<string, EventProgress>;
+  claimedRewards: string[];
+}
+
+export const DEFAULT_EVENT_CONFIG: EventConfig = {
+  id: 'spring_blossom_2026',
+  name: '春日花祭',
+  description: '限时活动·收集花瓣唤醒恋人，赢取珍稀奖励！',
+  banner: '🌸',
+  startTime: Date.now() - 86400000,
+  endTime: Date.now() + 7 * 86400000,
+  stageProgressType: 'petals_collected',
+  tasks: [
+    {
+      id: 'task_collect_50',
+      name: '花瓣收集者',
+      description: '累计收集 50 个花瓣',
+      icon: '🌸',
+      type: 'collect',
+      target: 50,
+      rewardType: 'score',
+      rewardValue: 500,
+      rewardDetail: '+500 分'
+    },
+    {
+      id: 'task_synthesis_20',
+      name: '合成大师',
+      description: '累计合成 20 次',
+      icon: '⭐',
+      type: 'synthesis',
+      target: 20,
+      rewardType: 'rare_petal',
+      rewardValue: 3,
+      rewardDetail: '稀有花瓣 ×3'
+    },
+    {
+      id: 'task_score_3000',
+      name: '分数挑战',
+      description: '单局获得 3000 分',
+      icon: '🏆',
+      type: 'score',
+      target: 3000,
+      rewardType: 'score',
+      rewardValue: 1000,
+      rewardDetail: '+1000 分'
+    },
+    {
+      id: 'task_rare_5',
+      name: '珍稀猎人',
+      description: '累计收集 5 个稀有花瓣',
+      icon: '💎',
+      type: 'rare',
+      target: 5,
+      rewardType: 'synthesis_bonus',
+      rewardValue: 2,
+      rewardDetail: '合成加成 ×2'
+    },
+    {
+      id: 'task_region_3',
+      name: '探索先锋',
+      description: '解锁 3 个区域',
+      icon: '🗺️',
+      type: 'region',
+      target: 3,
+      rewardType: 'score',
+      rewardValue: 800,
+      rewardDetail: '+800 分'
+    }
+  ],
+  stageRewards: [
+    {
+      id: 'stage_1',
+      stage: 1,
+      name: '初绽之礼',
+      description: '收集 30 花瓣',
+      requirement: 30,
+      rewardType: 'score',
+      rewardValue: 200,
+      rewardDetail: '+200 分'
+    },
+    {
+      id: 'stage_2',
+      stage: 2,
+      name: '盛开花语',
+      description: '收集 80 花瓣',
+      requirement: 80,
+      rewardType: 'rare_petal',
+      rewardValue: 2,
+      rewardDetail: '稀有花瓣 ×2'
+    },
+    {
+      id: 'stage_3',
+      stage: 3,
+      name: '花舞梦境',
+      description: '收集 150 花瓣',
+      requirement: 150,
+      rewardType: 'score',
+      rewardValue: 1000,
+      rewardDetail: '+1000 分'
+    },
+    {
+      id: 'stage_4',
+      stage: 4,
+      name: '永恒花园',
+      description: '收集 250 花瓣',
+      requirement: 250,
+      rewardType: 'exclusive_title',
+      rewardValue: 1,
+      rewardDetail: '限定称号·花祭使者'
+    }
+  ]
+};

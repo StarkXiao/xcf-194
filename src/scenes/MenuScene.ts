@@ -1,11 +1,13 @@
 import Phaser from 'phaser';
 import { SaveManager } from '../managers/SaveManager';
 import { AudioManager } from '../managers/AudioManager';
+import { EventManager } from '../managers/EventManager';
 import { GAME_WIDTH, GAME_HEIGHT } from '../types';
 
 export class MenuScene extends Phaser.Scene {
   private saveManager!: SaveManager;
   private audioManager!: AudioManager;
+  private eventManager!: EventManager;
   private fireflies: Phaser.GameObjects.Graphics[] = [];
 
   constructor() {
@@ -15,12 +17,14 @@ export class MenuScene extends Phaser.Scene {
   create(): void {
     this.saveManager = SaveManager.getInstance();
     this.audioManager = AudioManager.getInstance(this);
+    this.eventManager = EventManager.getInstance();
 
     this.createBackground();
     this.createFireflies();
     this.createTitle();
     this.createButtons();
     this.createBestRecord();
+    this.createEventButton();
   }
 
   private createBackground(): void {
@@ -290,5 +294,93 @@ export class MenuScene extends Phaser.Scene {
         color: '#a78bfa'
       }).setOrigin(0.5);
     }
+  }
+
+  private createEventButton(): void {
+    if (!this.eventManager.isEventActive()) return;
+
+    const event = this.eventManager.getCurrentEvent();
+    if (!event) return;
+
+    const hasUnclaimed = this.eventManager.hasUnclaimedRewards();
+    const btnX = GAME_WIDTH - 80;
+    const btnY = 280;
+
+    const btnBg = this.add.graphics();
+    btnBg.fillStyle(0xf59e0b, 0.9);
+    btnBg.fillRoundedRect(btnX - 55, btnY - 55, 110, 110, 20);
+    btnBg.lineStyle(3, 0xfbbf24, 0.9);
+    btnBg.strokeRoundedRect(btnX - 55, btnY - 55, 110, 110, 20);
+    btnBg.setInteractive(
+      new Phaser.Geom.Rectangle(btnX - 55, btnY - 55, 110, 110),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    const iconText = this.add.text(btnX, btnY - 15, event.banner, {
+      fontSize: '36px'
+    }).setOrigin(0.5);
+
+    const labelText = this.add.text(btnX, btnY + 25, '限时活动', {
+      fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+      fontSize: '16px',
+      color: '#fef3c7',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+
+    if (hasUnclaimed) {
+      const badge = this.add.graphics();
+      badge.fillStyle(0xef4444, 1);
+      badge.fillCircle(btnX + 35, btnY - 45, 14);
+      const badgeText = this.add.text(btnX + 35, btnY - 45, '!', {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '18px',
+        color: '#ffffff',
+        fontStyle: 'bold'
+      }).setOrigin(0.5);
+
+      this.tweens.add({
+        targets: [badge, badgeText],
+        scale: { from: 1, to: 1.2 },
+        duration: 800,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut'
+      });
+    }
+
+    this.tweens.add({
+      targets: btnBg,
+      scale: { from: 1, to: 1.05 },
+      duration: 1500,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
+
+    btnBg.on('pointerover', () => {
+      btnBg.clear();
+      btnBg.fillStyle(0xf59e0b, 1);
+      btnBg.fillRoundedRect(btnX - 60, btnY - 60, 120, 120, 24);
+      btnBg.lineStyle(3, 0xfef08a, 1);
+      btnBg.strokeRoundedRect(btnX - 60, btnY - 60, 120, 120, 24);
+    });
+
+    btnBg.on('pointerout', () => {
+      btnBg.clear();
+      btnBg.fillStyle(0xf59e0b, 0.9);
+      btnBg.fillRoundedRect(btnX - 55, btnY - 55, 110, 110, 20);
+      btnBg.lineStyle(3, 0xfbbf24, 0.9);
+      btnBg.strokeRoundedRect(btnX - 55, btnY - 55, 110, 110, 20);
+    });
+
+    btnBg.on('pointerdown', () => {
+      btnBg.setScale(0.95);
+    });
+
+    btnBg.on('pointerup', () => {
+      btnBg.setScale(1);
+      this.audioManager.playClick();
+      this.scene.start('EventScene');
+    });
   }
 }

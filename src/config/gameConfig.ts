@@ -3,6 +3,7 @@ import { BootScene } from '../scenes/BootScene';
 import { MenuScene } from '../scenes/MenuScene';
 import { GameScene } from '../scenes/GameScene';
 import { ResultScene } from '../scenes/ResultScene';
+import { EventScene } from '../scenes/EventScene';
 import { GAME_WIDTH, GAME_HEIGHT } from '../types';
 
 export const gameConfig: Phaser.Types.Core.GameConfig = {
@@ -17,7 +18,7 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
     height: GAME_HEIGHT
   },
   backgroundColor: '#0a0514',
-  scene: [BootScene, MenuScene, GameScene, ResultScene],
+  scene: [BootScene, MenuScene, EventScene, GameScene, ResultScene],
   render: {
     antialias: true,
     pixelArt: false,

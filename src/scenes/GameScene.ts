@@ -4,6 +4,7 @@ import { SynthesisSystem } from '../systems/SynthesisSystem';
 import { SaveManager } from '../managers/SaveManager';
 import { AudioManager } from '../managers/AudioManager';
 import { AnimationManager } from '../managers/AnimationManager';
+import { EventManager } from '../managers/EventManager';
 import {
   GAME_WIDTH,
   GAME_HEIGHT,
@@ -29,6 +30,7 @@ export class GameScene extends Phaser.Scene {
   private saveManager!: SaveManager;
   private audioManager!: AudioManager;
   private animationManager!: AnimationManager;
+  private eventManager!: EventManager;
 
   private petals: Phaser.GameObjects.Container[] = [];
   private petalData: Map<Phaser.GameObjects.Container, Petal> = new Map();
@@ -82,6 +84,7 @@ export class GameScene extends Phaser.Scene {
     this.saveManager = SaveManager.getInstance();
     this.audioManager = AudioManager.getInstance(this);
     this.animationManager = AnimationManager.getInstance(this);
+    this.eventManager = EventManager.getInstance();
     this.synthesisSystem = new SynthesisSystem();
     this.playerController = new PlayerController(this);
     this.startTime = Date.now();
@@ -271,6 +274,10 @@ export class GameScene extends Phaser.Scene {
     this.showRegionUnlockNotification(config);
     this.showGuideText(config.unlockGuide, 5000);
     this.audioManager.playVictory();
+
+    if (this.eventManager.isEventActive()) {
+      this.eventManager.updateTaskProgress('region', this.unlockedRegions.length);
+    }
 
     if (config.id !== 'initial' && config.id !== 'eternal') {
       this.spawnRarePetal(config);
@@ -956,6 +963,13 @@ export class GameScene extends Phaser.Scene {
       this.rarePetalsCollected++;
     }
 
+    if (this.eventManager.isEventActive()) {
+      this.eventManager.updateTaskProgress('collect', 1);
+      if (isRare) {
+        this.eventManager.updateTaskProgress('rare', 1);
+      }
+    }
+
     const scoreGain = data.tier * 15 + (data.color === 'gold' ? 30 : 0) + (isRare ? 50 : 0);
     this.score += scoreGain;
     this.updateScore();
@@ -1016,6 +1030,10 @@ export class GameScene extends Phaser.Scene {
 
     if (result.success) {
       this.synthesisCount += result.totalSynthesized;
+
+      if (this.eventManager.isEventActive()) {
+        this.eventManager.updateTaskProgress('synthesis', result.totalSynthesized);
+      }
 
       let totalScore = 0;
       let totalProgress = 0;
@@ -1129,6 +1147,10 @@ export class GameScene extends Phaser.Scene {
 
     if (result.success) {
       this.synthesisCount += result.totalSynthesized;
+
+      if (this.eventManager.isEventActive()) {
+        this.eventManager.updateTaskProgress('synthesis', result.totalSynthesized);
+      }
 
       let totalScore = 0;
       let totalProgress = 0;
@@ -1349,6 +1371,17 @@ export class GameScene extends Phaser.Scene {
       rareCollected: this.rarePetalsCollected,
       efficiencyScore
     });
+
+    if (this.eventManager.isEventActive()) {
+      this.eventManager.recordGameResult({
+        score: this.score,
+        petalsCollected: this.totalPetalsCollected,
+        synthesisCount: this.synthesisCount,
+        rareCollected: this.rarePetalsCollected,
+        regionsUnlocked: this.unlockedRegions.length,
+        playTime
+      });
+    }
 
     this.saveManager.clearGameState();
 
