@@ -4,9 +4,10 @@ import { EmotionAudioSystem } from './EmotionAudioSystem';
 
 export class AudioManager {
   private static instance: AudioManager;
+  private static sharedAudioContext: AudioContext | null = null;
+
   private scene!: Phaser.Scene;
-  private audioContext: AudioContext | null = null;
-  private initialized: boolean = false;
+  private emotionSystemInitialized: boolean = false;
   private enabled: boolean = true;
   private activeTimeouts: NodeJS.Timeout[] = [];
   private sfxVolume: number = 0.15;
@@ -28,6 +29,37 @@ export class AudioManager {
     return AudioManager.instance;
   }
 
+  private static getOrCreateAudioContext(): AudioContext | null {
+    if (AudioManager.sharedAudioContext) {
+      if (AudioManager.sharedAudioContext.state === 'closed') {
+        AudioManager.sharedAudioContext = null;
+      } else {
+        return AudioManager.sharedAudioContext;
+      }
+    }
+    try {
+      const AC = window.AudioContext || (window as any).webkitAudioContext;
+      if (AC) {
+        AudioManager.sharedAudioContext = new AC();
+      }
+    } catch (e) {
+      console.warn('[AudioManager] Web Audio 不可用，将使用静音模式', e);
+      AudioManager.sharedAudioContext = null;
+      return null;
+    }
+    return AudioManager.sharedAudioContext;
+  }
+
+  static shutdown(): void {
+    if (AudioManager.sharedAudioContext) {
+      try {
+        AudioManager.sharedAudioContext.close();
+      } catch {}
+      AudioManager.sharedAudioContext = null;
+    }
+    AudioManager.instance = null as any;
+  }
+
   setSfxVolume(volume: number): void {
     this.sfxVolume = Math.max(0, Math.min(1, volume));
   }
@@ -47,35 +79,39 @@ export class AudioManager {
 
   setScene(scene: Phaser.Scene): void {
     this.scene = scene;
-    if (!this.initialized || !this.audioContext) {
-      this.initialize();
+    if (!this.emotionSystemInitialized) {
+      this.initializeEmotionSystem();
     }
   }
 
-  private initialize(): void {
-    try {
-      const AC = window.AudioContext || (window as any).webkitAudioContext;
-      if (AC) {
-        this.audioContext = new AC();
-        if (this.emotionSystem == null) {
-          this.emotionSystem = new EmotionAudioSystem();
-        }
-        this.emotionSystem.init(this.scene, this.audioContext);
-        this.emotionSystem.setGlobalVolume(this.musicVolume);
-      }
-    } catch (e) {
-      console.warn('[AudioManager] Web Audio 不可用，将使用静音模式', e);
+  private initializeEmotionSystem(): void {
+    const ctx = AudioManager.getOrCreateAudioContext();
+    if (!ctx) {
       this.enabled = false;
+      this.emotionSystemInitialized = true;
+      return;
     }
-    this.initialized = true;
+    if (ctx.state === 'suspended') {
+      try { ctx.resume(); } catch {}
+    }
+    try {
+      if (this.emotionSystem == null) {
+        this.emotionSystem = new EmotionAudioSystem();
+      }
+      this.emotionSystem.init(this.scene, ctx);
+      this.emotionSystem.setGlobalVolume(this.musicVolume);
+      this.emotionSystemInitialized = true;
+    } catch (e) {
+      console.warn('[AudioManager] 初始化情绪音频系统失败', e);
+    }
   }
 
   private ensureContext(): boolean {
-    if (!this.enabled || !this.audioContext) return false;
-    if (this.audioContext.state === 'suspended') {
-      try {
-        this.audioContext.resume();
-      } catch {}
+    if (!this.enabled) return false;
+    const ctx = AudioManager.sharedAudioContext;
+    if (!ctx) return false;
+    if (ctx.state === 'suspended') {
+      try { ctx.resume(); } catch {}
     }
     return true;
   }
@@ -88,9 +124,8 @@ export class AudioManager {
     attack: number = 0.01,
     release: number = 0.08
   ): void {
-    if (!this.ensureContext() || !this.audioContext) return;
-
-    const ctx = this.audioContext;
+    if (!this.ensureContext()) return;
+    const ctx = AudioManager.sharedAudioContext!;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     const now = ctx.currentTime;
@@ -175,7 +210,7 @@ export class AudioManager {
   }
 
   playSynthesisChain(chainIndex: number, totalChain: number, tier?: PetalTier): void {
-    if (!this.ensureContext() || !this.audioContext) return;
+    if (!this.ensureContext()) return;
 
     const baseFreq = 523 + (tier ? (tier - 1) * 60 : 0);
     const interval = Math.max(40, 80 - chainIndex * 5);
@@ -199,7 +234,7 @@ export class AudioManager {
   }
 
   private playChainCompletion(totalChain: number): void {
-    if (!this.ensureContext() || !this.audioContext) return;
+    if (!this.ensureContext()) return;
 
     const arpeggio = [523, 659, 784, 1047, 1319];
     const volume = Math.min(0.25, this.sfxVolume + totalChain * 0.01);
@@ -220,7 +255,7 @@ export class AudioManager {
   }
 
   playAutoFeed(count: number): void {
-    if (!this.ensureContext() || !this.audioContext) return;
+    if (!this.ensureContext()) return;
 
     const baseFreq = 660;
     for (let i = 0; i < Math.min(count, 5); i++) {
@@ -231,7 +266,7 @@ export class AudioManager {
   }
 
   playTierUp(fromTier: PetalTier, toTier: PetalTier): void {
-    if (!this.ensureContext() || !this.audioContext) return;
+    if (!this.ensureContext()) return;
 
     const freqStep = 80;
     const startFreq = 440 + (fromTier - 1) * freqStep;
@@ -322,7 +357,6 @@ export class AudioManager {
     this.stopAll();
     this.emotionSystem?.destroy();
     this.emotionSystem = null;
-    this.audioContext = null;
-    this.initialized = false;
+    this.emotionSystemInitialized = false;
   }
 }
