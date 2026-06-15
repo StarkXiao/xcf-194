@@ -488,3 +488,126 @@ export const DEFAULT_EVENT_CONFIG: EventConfig = {
     }
   ]
 };
+
+export enum EmotionState {
+  COLLECTING = 'collecting',
+  SYNTHESIZING = 'synthesizing',
+  NEAR_AWAKENING = 'near_awakening'
+}
+
+export type LayerType = 'ambient' | 'bgm';
+
+export interface LayerConfig {
+  baseVolume: number;
+  fadeDuration: number;
+  oscillatorTypes?: OscillatorType[];
+  frequencyRange?: [number, number];
+  filterFrequency?: number;
+  filterQ?: number;
+  lfoRate?: number;
+  lfoDepth?: number;
+}
+
+export interface EmotionAudioConfig {
+  ambient: LayerConfig;
+  bgm: LayerConfig;
+  description: string;
+}
+
+export const EMOTION_AUDIO_CONFIGS: Record<EmotionState, EmotionAudioConfig> = {
+  [EmotionState.COLLECTING]: {
+    ambient: {
+      baseVolume: 0.06,
+      fadeDuration: 2500,
+      oscillatorTypes: ['sine', 'triangle'],
+      frequencyRange: [120, 280],
+      filterFrequency: 600,
+      filterQ: 0.7,
+      lfoRate: 0.15,
+      lfoDepth: 8
+    },
+    bgm: {
+      baseVolume: 0.05,
+      fadeDuration: 3000,
+      oscillatorTypes: ['sine'],
+      frequencyRange: [262, 523],
+      lfoRate: 0.08,
+      lfoDepth: 3
+    },
+    description: '采集态·静谧森林'
+  },
+  [EmotionState.SYNTHESIZING]: {
+    ambient: {
+      baseVolume: 0.035,
+      fadeDuration: 1800,
+      oscillatorTypes: ['triangle', 'sine'],
+      frequencyRange: [180, 420],
+      filterFrequency: 1200,
+      filterQ: 1.2,
+      lfoRate: 0.25,
+      lfoDepth: 12
+    },
+    bgm: {
+      baseVolume: 0.08,
+      fadeDuration: 2200,
+      oscillatorTypes: ['triangle', 'sine'],
+      frequencyRange: [330, 784],
+      lfoRate: 0.12,
+      lfoDepth: 5
+    },
+    description: '合成态·能量涌动'
+  },
+  [EmotionState.NEAR_AWAKENING]: {
+    ambient: {
+      baseVolume: 0.025,
+      fadeDuration: 1500,
+      oscillatorTypes: ['sawtooth', 'triangle'],
+      frequencyRange: [220, 560],
+      filterFrequency: 2000,
+      filterQ: 1.8,
+      lfoRate: 0.4,
+      lfoDepth: 18
+    },
+    bgm: {
+      baseVolume: 0.11,
+      fadeDuration: 1800,
+      oscillatorTypes: ['triangle', 'sawtooth', 'sine'],
+      frequencyRange: [392, 988],
+      lfoRate: 0.18,
+      lfoDepth: 8
+    },
+    description: '濒临唤醒·觉醒高潮'
+  }
+};
+
+export interface EmotionMetrics {
+  awakeProgress: number;
+  recentCollectCount: number;
+  recentSynthesisCount: number;
+  synthesisRate: number;
+  collectRate: number;
+  elapsedSeconds: number;
+}
+
+export interface ActiveLayer {
+  state: EmotionState;
+  type: LayerType;
+  gainNode: GainNode;
+  oscillators: OscillatorNode[];
+  lfos: OscillatorNode[];
+  lfoGains: GainNode[];
+  filters?: BiquadFilterNode[];
+  noiseSources?: AudioBufferSourceNode[];
+  noiseGains?: GainNode[];
+  currentVolume: number;
+  targetVolume: number;
+}
+
+export interface CrossFadeTask {
+  layer: ActiveLayer;
+  fromVolume: number;
+  toVolume: number;
+  startTime: number;
+  duration: number;
+  onComplete?: () => void;
+}

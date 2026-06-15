@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
-import { PetalTier, AudioCue } from '../types';
+import { PetalTier, AudioCue, EmotionState } from '../types';
+import { EmotionAudioSystem } from './EmotionAudioSystem';
 
 export class AudioManager {
   private static instance: AudioManager;
@@ -11,7 +12,11 @@ export class AudioManager {
   private sfxVolume: number = 0.15;
   private musicVolume: number = 0.1;
 
-  private constructor() {}
+  private emotionSystem: EmotionAudioSystem;
+
+  private constructor() {
+    this.emotionSystem = new EmotionAudioSystem();
+  }
 
   static getInstance(scene?: Phaser.Scene): AudioManager {
     if (!AudioManager.instance) {
@@ -33,6 +38,7 @@ export class AudioManager {
 
   setMusicVolume(volume: number): void {
     this.musicVolume = Math.max(0, Math.min(1, volume));
+    this.emotionSystem.setGlobalVolume(this.musicVolume);
   }
 
   getMusicVolume(): number {
@@ -51,6 +57,7 @@ export class AudioManager {
       const AC = window.AudioContext || (window as any).webkitAudioContext;
       if (AC) {
         this.audioContext = new AC();
+        this.emotionSystem.init(this.scene, this.audioContext);
       }
     } catch (e) {
       console.warn('[AudioManager] Web Audio 不可用，将使用静音模式', e);
@@ -102,6 +109,7 @@ export class AudioManager {
   playCollect(): void {
     this.playTone(880, 0.08, 'sine', 0.12);
     setTimeout(() => this.playTone(1320, 0.1, 'sine', 0.1), 40);
+    this.emotionSystem.recordCollect();
   }
 
   playSynthesis(): void {
@@ -109,6 +117,7 @@ export class AudioManager {
     notes.forEach((freq, i) => {
       setTimeout(() => this.playTone(freq, 0.12, 'triangle', 0.13), i * 70);
     });
+    this.emotionSystem.recordSynthesis();
   }
 
   playClick(): void {
@@ -138,6 +147,7 @@ export class AudioManager {
 
   setEnabled(enabled: boolean): void {
     this.enabled = enabled;
+    this.emotionSystem.setEnabled(enabled);
   }
 
   isEnabled(): boolean {
@@ -157,6 +167,7 @@ export class AudioManager {
     notes.forEach((freq, i) => {
       setTimeout(() => this.playTone(freq, 0.1 + tier * 0.01, 'triangle', volume), i * (70 - tier * 5));
     });
+    this.emotionSystem.recordSynthesis();
   }
 
   playSynthesisChain(chainIndex: number, totalChain: number, tier?: PetalTier): void {
@@ -176,6 +187,10 @@ export class AudioManager {
 
     if (chainIndex === totalChain - 1 && totalChain > 1) {
       setTimeout(() => this.playChainCompletion(totalChain), totalChain * 50);
+    }
+
+    if (chainIndex === 0) {
+      this.emotionSystem.recordSynthesis();
     }
   }
 
@@ -266,8 +281,37 @@ export class AudioManager {
     }
   }
 
+  updateAwakeProgress(progress: number): void {
+    this.emotionSystem.updateAwakeProgress(progress);
+  }
+
+  getEmotionState(): EmotionState {
+    return this.emotionSystem.getCurrentState();
+  }
+
+  getEmotionStateDescription(): string {
+    return this.emotionSystem.getStateDescription();
+  }
+
+  forceEmotionState(state: EmotionState): void {
+    this.emotionSystem.forceState(state);
+  }
+
+  getEmotionMetrics(awakeProgress: number): {
+    state: EmotionState;
+    description: string;
+    metrics: any;
+  } {
+    return this.emotionSystem.getMetrics(awakeProgress);
+  }
+
   stopAll(): void {
     this.activeTimeouts.forEach(t => clearTimeout(t));
     this.activeTimeouts = [];
+  }
+
+  destroy(): void {
+    this.stopAll();
+    this.emotionSystem.destroy();
   }
 }

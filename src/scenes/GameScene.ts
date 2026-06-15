@@ -1770,6 +1770,7 @@ export class GameScene extends Phaser.Scene {
 
   private updateProgressBar(): void {
     const progress = this.awakeProgress / AWAKEN_GOAL;
+    this.audioManager.updateAwakeProgress(this.awakeProgress);
     this.progressBar.clear();
 
     const colors = [0xf472b6, 0xc084fc, 0xa78bfa, 0x818cf8, 0x60a5fa];
@@ -1868,6 +1869,7 @@ export class GameScene extends Phaser.Scene {
     this.pathTrackingTimer?.destroy();
     this.animationManager.cancelAllAnimations();
     this.audioManager.stopAll();
+    this.audioManager.destroy();
     this.playerController.destroy();
 
     const playTime = Math.floor((Date.now() - this.startTime) / 1000);
