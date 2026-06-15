@@ -40,6 +40,9 @@ export class GameScene extends Phaser.Scene {
   private eventSynthesisBonus: number = 0;
   private eventRarePetalsGranted: number = 0;
   private eventInitialized: boolean = false;
+  private loadedAppliedEventBonus: number = 0;
+  private loadedAppliedEventRare: number = 0;
+  private loadedAppliedEventSynth: number = 0;
   private totalPetalsCollected: number = 0;
   private synthesisCount: number = 0;
   private startTime: number = 0;
@@ -137,37 +140,62 @@ export class GameScene extends Phaser.Scene {
 
     const saveData = this.saveManager.getCurrentSave();
 
-    if (saveData.eventBonusScore > 0) {
-      this.score += saveData.eventBonusScore;
+    let deltaScore = 0;
+    let deltaRare = 0;
+    let deltaSynth = 0;
+
+    if (isNewGame) {
+      deltaScore = saveData.eventBonusScore;
+      deltaRare = saveData.eventRarePetals;
+      deltaSynth = saveData.eventSynthesisBonus;
+    } else {
+      deltaScore = Math.max(0, saveData.eventBonusScore - this.loadedAppliedEventBonus);
+      deltaRare = Math.max(0, saveData.eventRarePetals - this.loadedAppliedEventRare);
+      deltaSynth = Math.max(0, saveData.eventSynthesisBonus - this.loadedAppliedEventSynth);
+      console.log('[GameScene] 继续游戏 活动奖励差值:', {
+        deltaScore, deltaRare, deltaSynth,
+        saveBonus: saveData.eventBonusScore, loaded: this.loadedAppliedEventBonus
+      });
+    }
+
+    if (deltaScore > 0) {
+      this.score += deltaScore;
       this.eventBonusScore = saveData.eventBonusScore;
       this.updateScore();
-      console.log('[GameScene] 活动奖励分数已应用:', saveData.eventBonusScore, '当前总分:', this.score);
+      console.log('[GameScene] 活动奖励分数已应用: +', deltaScore, '当前总分:', this.score);
+    } else {
+      this.eventBonusScore = saveData.eventBonusScore;
     }
 
-    if (isNewGame && saveData.eventRarePetals > 0) {
-      this.eventRarePetalsGranted = saveData.eventRarePetals;
-      for (let i = 0; i < saveData.eventRarePetals; i++) {
+    if (deltaRare > 0) {
+      for (let i = 0; i < deltaRare; i++) {
         this.synthesisSystem.addToInventory(2 as PetalTier, 'rainbow');
       }
-      this.totalPetalsCollected += saveData.eventRarePetals;
-      this.rarePetalsCollected += saveData.eventRarePetals;
+      this.eventRarePetalsGranted = saveData.eventRarePetals;
+      this.totalPetalsCollected += deltaRare;
+      this.rarePetalsCollected += deltaRare;
       this.updateInventoryDisplay();
-      console.log('[GameScene] 活动稀有花瓣已加入背包:', saveData.eventRarePetals, '个彩虹L2花瓣');
+      console.log('[GameScene] 活动稀有花瓣已加入背包: +', deltaRare, '个彩虹L2花瓣');
+    } else {
+      this.eventRarePetalsGranted = saveData.eventRarePetals;
     }
 
-    if (saveData.eventSynthesisBonus > 0) {
+    if (deltaSynth > 0) {
       this.eventSynthesisBonus = saveData.eventSynthesisBonus;
-      console.log('[GameScene] 活动合成加成已生效: x', saveData.eventSynthesisBonus);
+      console.log('[GameScene] 活动合成加成已更新: +', deltaSynth, '总加成:', saveData.eventSynthesisBonus);
+    } else {
+      this.eventSynthesisBonus = saveData.eventSynthesisBonus;
     }
 
-    if (saveData.eventBonusScore > 0 || saveData.eventRarePetals > 0 || saveData.eventSynthesisBonus > 0) {
+    if (deltaScore > 0 || deltaRare > 0 || deltaSynth > 0) {
       this.time.delayedCall(1500, () => {
         const msgs: string[] = [];
-        if (saveData.eventBonusScore > 0) msgs.push(`+${saveData.eventBonusScore}分`);
-        if (saveData.eventRarePetals > 0 && isNewGame) msgs.push(`💎×${saveData.eventRarePetals}`);
-        if (saveData.eventSynthesisBonus > 0) msgs.push(`⚡加成×${saveData.eventSynthesisBonus}`);
+        if (deltaScore > 0) msgs.push(`+${deltaScore}分`);
+        if (deltaRare > 0) msgs.push(`💎×${deltaRare}`);
+        if (deltaSynth > 0) msgs.push(`⚡+${deltaSynth}加成`);
+        const prefix = isNewGame ? '🎉 活动奖励已生效:' : '🎁 新增活动奖励:';
         if (msgs.length > 0) {
-          this.showGuideText(`🎉 活动奖励已生效: ${msgs.join(' ')}`, 4000);
+          this.showGuideText(`${prefix} ${msgs.join(' ')}`, 4000);
         }
       });
     }
@@ -782,7 +810,10 @@ export class GameScene extends Phaser.Scene {
       playTime: Math.floor((Date.now() - this.startTime) / 1000),
       isCompleted: this.isCompleted,
       unlockedRegions: [...this.unlockedRegions],
-      rarePetalsCollected: this.rarePetalsCollected
+      rarePetalsCollected: this.rarePetalsCollected,
+      appliedEventBonusScore: this.eventBonusScore,
+      appliedEventRarePetals: this.eventRarePetalsGranted,
+      appliedEventSynthesisBonus: this.eventSynthesisBonus
     };
 
     const petalDataArray: PetalType[] = [];
@@ -828,6 +859,16 @@ export class GameScene extends Phaser.Scene {
     this.unlockedRegions = gameState.unlockedRegions ?? ['initial'];
     this.rarePetalsCollected = gameState.rarePetalsCollected ?? 0;
     this.currentBgRegion = this.getActiveRegionConfig().id;
+
+    this.loadedAppliedEventBonus = gameState.appliedEventBonusScore ?? 0;
+    this.loadedAppliedEventRare = gameState.appliedEventRarePetals ?? 0;
+    this.loadedAppliedEventSynth = gameState.appliedEventSynthesisBonus ?? 0;
+
+    console.log('[GameScene] 读档已应用活动奖励:', {
+      bonusScore: this.loadedAppliedEventBonus,
+      rare: this.loadedAppliedEventRare,
+      synth: this.loadedAppliedEventSynth
+    });
 
     this.synthesisSystem.setInventory(gameState.inventory);
 

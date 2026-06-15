@@ -28,6 +28,9 @@ export interface GameState {
   isCompleted: boolean;
   unlockedRegions: RegionId[];
   rarePetalsCollected: number;
+  appliedEventBonusScore: number;
+  appliedEventRarePetals: number;
+  appliedEventSynthesisBonus: number;
 }
 
 export interface SaveData {

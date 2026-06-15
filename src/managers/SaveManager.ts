@@ -264,6 +264,16 @@ export class SaveManager {
       }
     }
 
+    if (typeof result.gameState.appliedEventBonusScore !== 'number') {
+      result.gameState.appliedEventBonusScore = 0;
+    }
+    if (typeof result.gameState.appliedEventRarePetals !== 'number') {
+      result.gameState.appliedEventRarePetals = 0;
+    }
+    if (typeof result.gameState.appliedEventSynthesisBonus !== 'number') {
+      result.gameState.appliedEventSynthesisBonus = 0;
+    }
+
     return result;
   }
 
