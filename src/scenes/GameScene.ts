@@ -60,6 +60,7 @@ export class GameScene extends Phaser.Scene {
   private unlockNotificationContainer!: Phaser.GameObjects.Container;
   private guideText!: Phaser.GameObjects.Text;
   private currentBgRegion: RegionId = 'initial';
+  private nextRegionHintText!: Phaser.GameObjects.Text;
 
   constructor() {
     super('GameScene');
@@ -196,6 +197,13 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private updateNextRegionHint(): void {
+    if (!this.nextRegionHintText) return;
+    const nextRegion = REGION_CONFIGS.find(r => r.unlockThreshold > this.awakeProgress);
+    const nextHint = nextRegion ? ` → ${nextRegion.unlockThreshold}% 解锁${nextRegion.name}` : '';
+    this.nextRegionHintText.setText(nextHint);
+  }
+
   private createGuideText(): void {
     this.guideText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 480, '', {
       fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
@@ -242,6 +250,8 @@ export class GameScene extends Phaser.Scene {
       });
       this.updateRegionIndicator();
     }
+
+    this.updateNextRegionHint();
   }
 
   private onRegionUnlocked(config: RegionConfig): void {
@@ -431,11 +441,11 @@ export class GameScene extends Phaser.Scene {
 
     const nextRegion = REGION_CONFIGS.find(r => r.unlockThreshold > this.awakeProgress);
     const nextHint = nextRegion ? ` → ${nextRegion.unlockThreshold}% 解锁${nextRegion.name}` : '';
-    this.add.text(230, 108, nextHint, {
+    this.nextRegionHintText = this.add.text(230, 108, nextHint, {
       fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
       fontSize: '14px',
       color: '#a78bfa'
-    }).setData('isNextRegionHint', true);
+    });
 
     const barBg = this.add.graphics();
     barBg.fillStyle(0x312e81, 0.8);
@@ -754,6 +764,12 @@ export class GameScene extends Phaser.Scene {
     this.updateScore();
     this.updateProgressBar();
     this.updateInventoryDisplay();
+
+    const activeConfig = this.getActiveRegionConfig();
+    this.currentBgRegion = activeConfig.id;
+    this.renderRegionBackground(activeConfig);
+    this.updateRegionIndicator();
+    this.updateNextRegionHint();
 
     this.loadingGameState = false;
     console.log('[GameScene] 游戏状态已加载');
