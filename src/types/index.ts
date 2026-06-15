@@ -199,6 +199,8 @@ export const MUTATION_RECIPES_CONFIG: {
   variant: PetalVariant;
   name: string;
 }[] = [
+  // 主色判定：持有量多者为主色，相同时 colorA 优先作主色（决定产出的基础颜色）
+  // 颜色对决定品种，与顺序无关
   {
     colorA: 'pink',
     colorB: 'gold',

@@ -100,6 +100,24 @@ export class SynthesisSystem {
           outputTier: nextTier,
           name: `${PETAL_TIER_NAMES[tier]}·${config.name} → ${PETAL_VARIANT_NAMES[config.variant]}${PETAL_TIER_NAMES[nextTier]}(${config.colorB})`
         });
+        this.mutationRecipes.push({
+          colorA: config.colorB,
+          colorB: config.colorA,
+          variant: config.variant,
+          tier,
+          outputColor: config.colorA,
+          outputTier: nextTier,
+          name: `${PETAL_TIER_NAMES[tier]}·${config.name}(反) → ${PETAL_VARIANT_NAMES[config.variant]}${PETAL_TIER_NAMES[nextTier]}(${config.colorA})`
+        });
+        this.mutationRecipes.push({
+          colorA: config.colorB,
+          colorB: config.colorA,
+          variant: config.variant,
+          tier,
+          outputColor: config.colorB,
+          outputTier: nextTier,
+          name: `${PETAL_TIER_NAMES[tier]}·${config.name}(反) → ${PETAL_VARIANT_NAMES[config.variant]}${PETAL_TIER_NAMES[nextTier]}(${config.colorB})`
+        });
       });
     });
   }
@@ -672,9 +690,9 @@ export class SynthesisSystem {
   tryMutate(tier: PetalTier, primaryColor: PetalColor, secondaryColor: PetalColor): MutationResult {
     const recipe = this.mutationRecipes.find(r =>
       r.tier === tier &&
-      r.colorA === primaryColor &&
-      r.colorB === secondaryColor &&
-      r.outputColor === primaryColor
+      r.outputColor === primaryColor &&
+      ((r.colorA === primaryColor && r.colorB === secondaryColor) ||
+       (r.colorA === secondaryColor && r.colorB === primaryColor))
     );
 
     if (!recipe) {

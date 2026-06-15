@@ -853,7 +853,7 @@ export class GameScene extends Phaser.Scene {
     }).setOrigin(0.5);
     this.mutationPanel.add(title);
 
-    const subtitle = this.add.text(0, -128, '异色对→品种固定 | 数量多的为主色(决定产出颜色)', {
+    const subtitle = this.add.text(0, -128, '异色对→品种固定 | 量多→主色(决定产出色) | 等量→配置顺序优先', {
       fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
       fontSize: '14px',
       color: '#a78bfa'
@@ -920,9 +920,9 @@ export class GameScene extends Phaser.Scene {
       }).setOrigin(0.5);
       recipeContainer.add(nameText);
 
-      const tipText = this.add.text(colX + 115, rowY, '←主色', {
+      const tipText = this.add.text(colX + 115, rowY, '←量多/量等优先', {
         fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
-        fontSize: '10px',
+        fontSize: '9px',
         color: '#86efac'
       }).setOrigin(0.5);
       recipeContainer.add(tipText);
