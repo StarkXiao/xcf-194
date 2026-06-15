@@ -98,7 +98,7 @@ export class SynthesisSystem {
       if (this.getItemCount(input.tier, input.color) < input.count) {
         return {
           success: false,
-          message: `材料不足：需要 ${input.count} 个 ${PETAL_TIER_NAMES[input.tier]}(${input.color})`
+          message: `材料不足：需要 ${input.count} 个 ${PETAL_TIER_NAMES[input.tier as PetalTier]}(${input.color})`
         };
       }
     }
@@ -112,7 +112,58 @@ export class SynthesisSystem {
     return {
       success: true,
       output: recipe.output,
-      message: `合成成功！获得 ${PETAL_TIER_NAMES[recipe.output.tier]}(${recipe.output.color})`
+      message: `合成成功！获得 ${PETAL_TIER_NAMES[recipe.output.tier as PetalTier]}(${recipe.output.color})`
+    };
+  }
+
+  trySynthesizeMax(tier: PetalTier, color: PetalColor): {
+    success: boolean;
+    totalSynthesized: number;
+    highestTier: PetalTier;
+    outputs: { tier: PetalTier; color: PetalColor; count: number }[];
+  } {
+    let totalSynth = 0;
+    const outputs: { tier: PetalTier; color: PetalColor; count: number }[] = [];
+    let currentTier = tier;
+    let highestTier = tier;
+
+    while (currentTier < 5) {
+      const count = this.getItemCount(currentTier as PetalTier, color);
+      const needCount = color === 'rainbow' ? 2 : 3;
+
+      if (count < needCount) break;
+
+      const recipe = this.recipes.find(r =>
+        r.input.length === 1 &&
+        r.input[0].tier === currentTier &&
+        r.input[0].color === color
+      );
+
+      if (!recipe) break;
+
+      const times = Math.floor(count / needCount);
+      for (let i = 0; i < times; i++) {
+        const result = this.trySynthesize(currentTier as PetalTier, color);
+        if (result.success && result.output) {
+          totalSynth++;
+          highestTier = Math.max(highestTier, result.output.tier) as PetalTier;
+          const existing = outputs.find(o => o.tier === result.output!.tier && o.color === result.output!.color);
+          if (existing) {
+            existing.count += result.output.count;
+          } else {
+            outputs.push({ ...result.output });
+          }
+        }
+      }
+
+      currentTier = (currentTier + 1) as PetalTier;
+    }
+
+    return {
+      success: totalSynth > 0,
+      totalSynthesized: totalSynth,
+      highestTier,
+      outputs
     };
   }
 
@@ -135,6 +186,57 @@ export class SynthesisSystem {
       output: { tier: 2, color: 'rainbow', count: 1 },
       message: '合成彩虹花瓣成功！'
     };
+  }
+
+  trySynthesizeRainbowMax(): {
+    success: boolean;
+    count: number;
+  } {
+    let total = 0;
+    while (true) {
+      const result = this.trySynthesizeRainbow();
+      if (!result.success) break;
+      total++;
+    }
+    return { success: total > 0, count: total };
+  }
+
+  getColorHighestTier(color: PetalColor): PetalTier | null {
+    let highest: PetalTier | null = null;
+    for (let tier: PetalTier = 5; tier >= 1; tier = (tier - 1) as PetalTier) {
+      if (this.getItemCount(tier, color) > 0) {
+        highest = tier;
+        break;
+      }
+    }
+    return highest;
+  }
+
+  getColorTotalCount(color: PetalColor): number {
+    let total = 0;
+    for (let tier: PetalTier = 1; tier <= 5; tier = (tier + 1) as PetalTier) {
+      total += this.getItemCount(tier, color);
+    }
+    return total;
+  }
+
+  canSynthesize(color: PetalColor): boolean {
+    if (color === 'rainbow') {
+      for (let tier: PetalTier = 2; tier <= 4; tier = (tier + 1) as PetalTier) {
+        if (this.getItemCount(tier, color) >= 2) return true;
+      }
+      return false;
+    }
+    for (let tier: PetalTier = 1; tier <= 4; tier = (tier + 1) as PetalTier) {
+      if (this.getItemCount(tier, color) >= 3) return true;
+    }
+    return false;
+  }
+
+  canMakeRainbow(): boolean {
+    return this.getItemCount(1, 'pink') >= 1 &&
+           this.getItemCount(1, 'blue') >= 1 &&
+           this.getItemCount(1, 'purple') >= 1;
   }
 
   getTotalPetalCount(): number {

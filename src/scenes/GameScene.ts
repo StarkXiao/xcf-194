@@ -172,43 +172,130 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createInventory(): void {
-    this.inventoryPanel = this.add.container(GAME_WIDTH / 2, GAME_HEIGHT - 750);
+    this.inventoryPanel = this.add.container(GAME_WIDTH / 2, GAME_HEIGHT - 720);
 
     const invBg = this.add.graphics();
-    invBg.fillStyle(0x1e1b4b, 0.9);
-    invBg.fillRoundedRect(-340, -60, 680, 120, 20);
+    invBg.fillStyle(0x1e1b4b, 0.92);
+    invBg.fillRoundedRect(-350, -90, 700, 190, 22);
     invBg.lineStyle(2, 0xa78bfa, 0.6);
-    invBg.strokeRoundedRect(-340, -60, 680, 120, 20);
+    invBg.strokeRoundedRect(-350, -90, 700, 190, 22);
     this.inventoryPanel.add(invBg);
 
-    const title = this.add.text(0, -40, '🌸 花瓣背包 (点击两个相同花瓣合成)', {
+    const title = this.add.text(0, -65, '🌸 花瓣背包 · 点击一键合成', {
       fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
-      fontSize: '20px',
-      color: '#c4b5fd'
+      fontSize: '22px',
+      color: '#fde68a',
+      fontStyle: 'bold'
     }).setOrigin(0.5);
     this.inventoryPanel.add(title);
 
-    const slotKeys = PETAL_COLORS.map(c => `${c}_1`);
-    slotKeys.forEach((key, i) => {
-      const slotX = -260 + i * 130;
-      const slot = this.add.container(slotX, 15);
+    const subtitle = this.add.text(0, -40, '3个同色→升级 | 彩虹2个→升级 | 粉蓝紫各1→彩虹', {
+      fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+      fontSize: '16px',
+      color: '#a78bfa'
+    }).setOrigin(0.5);
+    this.inventoryPanel.add(subtitle);
+
+    const displayColors: PetalColor[] = ['pink', 'blue', 'purple', 'gold', 'rainbow'];
+    displayColors.forEach((color, i) => {
+      const slotX = -280 + i * 130;
+      const slot = this.add.container(slotX, 35);
 
       const slotBg = this.add.graphics();
       slotBg.fillStyle(0x312e81, 0.6);
-      slotBg.fillRoundedRect(-45, -40, 90, 80, 12);
+      slotBg.fillRoundedRect(-55, -50, 110, 100, 14);
       slotBg.lineStyle(2, 0x6366f1, 0.4);
-      slotBg.strokeRoundedRect(-45, -40, 90, 80, 12);
+      slotBg.strokeRoundedRect(-55, -50, 110, 100, 14);
       slot.add(slotBg);
+      slot.setData('bg', slotBg);
 
-      slot.setSize(90, 80);
+      slot.setSize(110, 100);
       slot.setInteractive();
-      slot.on('pointerdown', () => this.onInventorySlotClick(key));
+      slot.on('pointerdown', () => this.onColorSlotClick(color));
 
-      this.inventorySlots.set(key, slot);
+      this.inventorySlots.set(color, slot);
       this.inventoryPanel.add(slot);
     });
 
+    const rainbowBtn = this.add.container(280, -25);
+    const btnBg = this.add.graphics();
+    btnBg.fillStyle(0xf59e0b, 0.2);
+    btnBg.fillRoundedRect(-55, -20, 110, 40, 20);
+    btnBg.lineStyle(2, 0xfbbf24, 0.8);
+    btnBg.strokeRoundedRect(-55, -20, 110, 40, 20);
+    rainbowBtn.add(btnBg);
+    rainbowBtn.setData('bg', btnBg);
+
+    const btnText = this.add.text(0, 0, '✨ 彩虹转化', {
+      fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+      fontSize: '18px',
+      color: '#fde68a',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    rainbowBtn.add(btnText);
+
+    rainbowBtn.setSize(110, 40);
+    rainbowBtn.setInteractive();
+    rainbowBtn.on('pointerdown', () => this.onRainbowConvertClick());
+    this.inventoryPanel.add(rainbowBtn);
+    this.inventorySlots.set('rainbow_btn', rainbowBtn);
+
     this.updateInventoryDisplay();
+    this.startInventoryGlowAnimation();
+  }
+
+  private startInventoryGlowAnimation(): void {
+    this.time.addEvent({
+      delay: 500,
+      loop: true,
+      callback: () => {
+        if (this.isCompleted) return;
+        const colors: PetalColor[] = ['pink', 'blue', 'purple', 'gold', 'rainbow'];
+        const time = this.time.now / 1000;
+        colors.forEach((color) => {
+          const slot = this.inventorySlots.get(color);
+          if (!slot) return;
+          const canSynth = this.synthesisSystem.canSynthesize(color);
+          const bg = slot.getData('bg') as Phaser.GameObjects.Graphics;
+          if (bg && slot.list[0] === bg) {
+            bg.clear();
+            if (canSynth) {
+              const pulse = 0.5 + Math.sin(time * 3) * 0.3;
+              bg.fillStyle(0x7c3aed, 0.5 + pulse * 0.3);
+              bg.fillRoundedRect(-55, -50, 110, 100, 14);
+              bg.lineStyle(3, 0xfbbf24, 0.6 + pulse * 0.4);
+              bg.strokeRoundedRect(-55, -50, 110, 100, 14);
+            } else {
+              bg.fillStyle(0x312e81, 0.6);
+              bg.fillRoundedRect(-55, -50, 110, 100, 14);
+              bg.lineStyle(2, 0x6366f1, 0.4);
+              bg.strokeRoundedRect(-55, -50, 110, 100, 14);
+            }
+          }
+        });
+
+        const rainbowBtn = this.inventorySlots.get('rainbow_btn');
+        if (rainbowBtn) {
+          const canMake = this.synthesisSystem.canMakeRainbow();
+          const btnBg = rainbowBtn.getData('bg') as Phaser.GameObjects.Graphics;
+          if (btnBg) {
+            btnBg.clear();
+            if (canMake) {
+              const pulse = 0.5 + Math.sin(time * 4) * 0.3;
+              btnBg.fillStyle(0xf59e0b, 0.3 + pulse * 0.3);
+              btnBg.fillRoundedRect(-55, -20, 110, 40, 20);
+              btnBg.lineStyle(3, 0xfef08a, 0.7 + pulse * 0.3);
+              btnBg.strokeRoundedRect(-55, -20, 110, 40, 20);
+            } else {
+              btnBg.fillStyle(0x374151, 0.4);
+              btnBg.fillRoundedRect(-55, -20, 110, 40, 20);
+              btnBg.lineStyle(2, 0x6b7280, 0.5);
+              btnBg.strokeRoundedRect(-55, -20, 110, 40, 20);
+            }
+          }
+        }
+      }
+    });
   }
 
   private createBackButton(): void {
@@ -240,10 +327,10 @@ export class GameScene extends Phaser.Scene {
 
   private startPetalSpawner(): void {
     this.spawnTimer = this.time.addEvent({
-      delay: 2500,
+      delay: 1500,
       loop: true,
       callback: () => {
-        if (this.petals.length < 12 && !this.isCompleted) {
+        if (this.petals.length < 15 && !this.isCompleted) {
           this.spawnPetal();
         }
       }
@@ -359,11 +446,11 @@ export class GameScene extends Phaser.Scene {
     this.synthesisSystem.addToInventory(data.tier, data.color);
     this.totalPetalsCollected++;
 
-    const scoreGain = data.tier * 10 + (data.color === 'gold' ? 20 : 0);
+    const scoreGain = data.tier * 15 + (data.color === 'gold' ? 30 : 0);
     this.score += scoreGain;
     this.updateScore();
 
-    const progressGain = data.tier * 1.5;
+    const progressGain = data.tier * 2.5;
     this.awakeProgress = Math.min(AWAKEN_GOAL, this.awakeProgress + progressGain);
     this.updateProgressBar();
 
@@ -389,34 +476,93 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private onInventorySlotClick(key: string): void {
-    const [color, tierStr] = key.split('_');
-    const tier = parseInt(tierStr) as PetalTier;
+  private onColorSlotClick(color: PetalColor): void {
+    const lowestTier = this.getLowestSynthesizableTier(color);
+    if (lowestTier === null) {
+      const slot = this.inventorySlots.get(color);
+      if (slot) this.animationManager.playShake(slot);
+      return;
+    }
 
-    const result = this.synthesisSystem.trySynthesize(tier, color as PetalColor);
+    const result = this.synthesisSystem.trySynthesizeMax(lowestTier, color);
 
     if (result.success) {
       this.audioManager.playSynthesis();
-      this.synthesisCount++;
+      this.synthesisCount += result.totalSynthesized;
 
-      if (result.output) {
-        const outputScore = result.output.tier * 80;
-        this.score += outputScore;
-        this.awakeProgress = Math.min(AWAKEN_GOAL, this.awakeProgress + result.output.tier * 3);
-        this.updateScore();
-        this.updateProgressBar();
+      let totalScore = 0;
+      let totalProgress = 0;
+      result.outputs.forEach((output) => {
+        totalScore += output.tier * 100 * output.count;
+        totalProgress += output.tier * 4 * output.count;
+      });
+      this.score += totalScore;
+      this.awakeProgress = Math.min(AWAKEN_GOAL, this.awakeProgress + totalProgress);
+      this.updateScore();
+      this.updateProgressBar();
 
-        this.animationManager.playSynthesisEffect(
-          GAME_WIDTH / 2,
-          GAME_HEIGHT - 750,
-          result.output.color
-        );
-      }
+      this.animationManager.playSynthesisEffect(
+        GAME_WIDTH / 2,
+        GAME_HEIGHT - 720 + 35,
+        color
+      );
 
       this.updateInventoryDisplay();
+
+      if (this.awakeProgress >= AWAKEN_GOAL && !this.isCompleted) {
+        this.isCompleted = true;
+        this.time.delayedCall(600, () => this.endGame(true));
+      }
     } else {
-      this.animationManager.playShake(this.inventorySlots.get(key)!);
+      const slot = this.inventorySlots.get(color);
+      if (slot) this.animationManager.playShake(slot);
     }
+  }
+
+  private onRainbowConvertClick(): void {
+    if (!this.synthesisSystem.canMakeRainbow()) {
+      const btn = this.inventorySlots.get('rainbow_btn');
+      if (btn) this.animationManager.playShake(btn);
+      return;
+    }
+
+    const result = this.synthesisSystem.trySynthesizeRainbowMax();
+
+    if (result.success) {
+      this.audioManager.playSynthesis();
+      this.synthesisCount += result.count;
+
+      const scoreGain = 2 * 100 * result.count;
+      const progressGain = 2 * 4 * result.count;
+      this.score += scoreGain;
+      this.awakeProgress = Math.min(AWAKEN_GOAL, this.awakeProgress + progressGain);
+      this.updateScore();
+      this.updateProgressBar();
+
+      this.animationManager.playSynthesisEffect(
+        GAME_WIDTH / 2 + 280,
+        GAME_HEIGHT - 720 - 25,
+        'rainbow'
+      );
+
+      this.updateInventoryDisplay();
+
+      if (this.awakeProgress >= AWAKEN_GOAL && !this.isCompleted) {
+        this.isCompleted = true;
+        this.time.delayedCall(600, () => this.endGame(true));
+      }
+    }
+  }
+
+  private getLowestSynthesizableTier(color: PetalColor): PetalTier | null {
+    const needCount = color === 'rainbow' ? 2 : 3;
+    const startTier: PetalTier = color === 'rainbow' ? 2 : 1;
+    for (let tier: PetalTier = startTier; tier <= 4; tier = (tier + 1) as PetalTier) {
+      if (this.synthesisSystem.getItemCount(tier, color) >= needCount) {
+        return tier;
+      }
+    }
+    return null;
   }
 
   private updateScore(): void {
@@ -454,32 +600,53 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateInventoryDisplay(): void {
-    const inventory = this.synthesisSystem.getInventory();
+    const colors: PetalColor[] = ['pink', 'blue', 'purple', 'gold', 'rainbow'];
 
-    PETAL_COLORS.forEach((color) => {
-      const key = `${color}_1`;
-      const slot = this.inventorySlots.get(key);
+    colors.forEach((color) => {
+      const slot = this.inventorySlots.get(color);
       if (!slot) return;
 
-      const item = inventory.find(i => i.color === color);
-      const count = item?.count || 0;
-
+      const bg = slot.getData('bg') as Phaser.GameObjects.Graphics;
       slot.each((child: Phaser.GameObjects.GameObject) => {
-        if (child !== slot.list[0]) child.destroy();
+        if (child !== bg) child.destroy();
       });
 
-      if (count > 0) {
-        this.createPetalVisual(slot as Phaser.GameObjects.Container, color, 1);
-        slot.setScale(0.65);
+      const highestTier = this.synthesisSystem.getColorHighestTier(color);
+      const totalCount = this.synthesisSystem.getColorTotalCount(color);
 
-        const countText = this.add.text(28, 22, `x${count}`, {
+      if (highestTier && totalCount > 0) {
+        this.createPetalVisual(slot, color, highestTier);
+        slot.setScale(0.6);
+
+        const countBg = this.add.graphics();
+        countBg.fillStyle(0x7c3aed, 0.95);
+        countBg.fillRoundedRect(25, 28, 48, 28, 14);
+        slot.add(countBg);
+
+        const countText = this.add.text(49, 42, `×${totalCount}`, {
           fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
           fontSize: '18px',
           color: '#fef3c7',
-          backgroundColor: '#7c3aed',
-          padding: { x: 4, y: 1 }
+          fontStyle: 'bold'
         }).setOrigin(0.5);
         slot.add(countText);
+
+        const tierText = this.add.text(0, -50, `Lv.${highestTier}`, {
+          fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+          fontSize: '16px',
+          color: '#fde68a',
+          fontStyle: 'bold',
+          backgroundColor: '#1e1b4b',
+          padding: { x: 8, y: 2 }
+        }).setOrigin(0.5);
+        slot.add(tierText);
+      } else {
+        const emptyText = this.add.text(0, 10, '空', {
+          fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+          fontSize: '20px',
+          color: '#6366f1'
+        }).setOrigin(0.5);
+        slot.add(emptyText);
       }
     });
   }
