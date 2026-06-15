@@ -16,7 +16,11 @@ import {
   Petal as PetalType,
   RegionId,
   RegionConfig,
-  REGION_CONFIGS
+  REGION_CONFIGS,
+  CollectionPathPoint,
+  SynthesisLogEntry,
+  RewardSource,
+  ReplayData
 } from '../types';
 
 export class GameScene extends Phaser.Scene {
@@ -62,6 +66,14 @@ export class GameScene extends Phaser.Scene {
   private currentBgRegion: RegionId = 'initial';
   private nextRegionHintText!: Phaser.GameObjects.Text;
 
+  private collectionPath: CollectionPathPoint[] = [];
+  private synthesisLog: SynthesisLogEntry[] = [];
+  private rewardSources: RewardSource[] = [];
+  private petalsByColor: Map<PetalColor, number> = new Map();
+  private petalsByRegion: Map<RegionId, number> = new Map();
+  private pathTrackingTimer!: Phaser.Time.TimerEvent;
+  private highestSynthesisTier: PetalTier = 1;
+
   constructor() {
     super('GameScene');
   }
@@ -94,6 +106,7 @@ export class GameScene extends Phaser.Scene {
 
     this.startPetalSpawner();
     this.startAutoSave();
+    this.startPathTracking();
     this.setupCollisions();
 
     const validation = this.synthesisSystem.validateInventory();
@@ -682,6 +695,21 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  private startPathTracking(): void {
+    this.pathTrackingTimer = this.time.addEvent({
+      delay: 200,
+      loop: true,
+      callback: () => {
+        if (this.isCompleted) return;
+        const pos = this.playerController.getPosition();
+        this.collectionPath.push({ x: pos.x, y: pos.y, t: Date.now() });
+        if (this.collectionPath.length > 3000) {
+          this.collectionPath = this.collectionPath.slice(-2000);
+        }
+      }
+    });
+  }
+
   private saveGameState(): void {
     const gameState: GameState = {
       petals: [],
@@ -915,6 +943,13 @@ export class GameScene extends Phaser.Scene {
     this.synthesisSystem.addToInventory(data.tier, data.color);
     this.totalPetalsCollected++;
 
+    const colorCount = this.petalsByColor.get(data.color) ?? 0;
+    this.petalsByColor.set(data.color, colorCount + 1);
+
+    const activeRegion = this.getActiveRegionConfig().id;
+    const regionCount = this.petalsByRegion.get(activeRegion) ?? 0;
+    this.petalsByRegion.set(activeRegion, regionCount + 1);
+
     const config = this.getActiveRegionConfig();
     const isRare = config.spawnRule.rareColor === data.color && config.spawnRule.rareTier === data.tier;
     if (isRare) {
@@ -924,6 +959,9 @@ export class GameScene extends Phaser.Scene {
     const scoreGain = data.tier * 15 + (data.color === 'gold' ? 30 : 0) + (isRare ? 50 : 0);
     this.score += scoreGain;
     this.updateScore();
+
+    const sourceLabel = isRare ? `💎 稀有·${data.color}` : `🌸 采集·${data.color}·T${data.tier}`;
+    this.rewardSources.push({ label: sourceLabel, score: scoreGain, color: data.color });
 
     const progressGain = data.tier * 2.5 + (isRare ? 5 : 0);
     this.awakeProgress = Math.min(AWAKEN_GOAL, this.awakeProgress + progressGain);
@@ -984,12 +1022,30 @@ export class GameScene extends Phaser.Scene {
       result.outputs.forEach((output) => {
         totalScore += output.tier * 100 * output.count;
         totalProgress += output.tier * 4 * output.count;
+        this.synthesisLog.push({
+          tier: (output.tier - 1) as PetalTier,
+          color: output.color,
+          outputTier: output.tier,
+          outputColor: output.color,
+          t: Date.now()
+        });
+        if (output.tier > this.highestSynthesisTier) {
+          this.highestSynthesisTier = output.tier;
+        }
       });
       this.score += totalScore;
       this.awakeProgress = Math.min(AWAKEN_GOAL, this.awakeProgress + totalProgress);
       this.updateScore();
       this.updateProgressBar();
       this.checkRegionUnlocks();
+
+      if (totalScore > 0) {
+        this.rewardSources.push({
+          label: `⭐ 合成·${color}·x${result.totalSynthesized}`,
+          score: totalScore,
+          color
+        });
+      }
 
       if (result.autoFedCount > 0) {
         this.audioManager.playAutoFeed(result.autoFedCount);
@@ -1079,12 +1135,30 @@ export class GameScene extends Phaser.Scene {
       result.outputs.forEach((output) => {
         totalScore += output.tier * 100 * output.count;
         totalProgress += output.tier * 4 * output.count;
+        this.synthesisLog.push({
+          tier: (output.tier - 1) as PetalTier,
+          color: 'rainbow',
+          outputTier: output.tier,
+          outputColor: output.color,
+          t: Date.now()
+        });
+        if (output.tier > this.highestSynthesisTier) {
+          this.highestSynthesisTier = output.tier;
+        }
       });
       this.score += totalScore;
       this.awakeProgress = Math.min(AWAKEN_GOAL, this.awakeProgress + totalProgress);
       this.updateScore();
       this.updateProgressBar();
       this.checkRegionUnlocks();
+
+      if (totalScore > 0) {
+        this.rewardSources.push({
+          label: `🌈 彩虹合成·x${result.totalSynthesized}`,
+          score: totalScore,
+          color: 'rainbow'
+        });
+      }
 
       for (let i = 0; i < result.chainLength; i++) {
         const outputTier = result.outputs.find((o, idx) => {
@@ -1232,17 +1306,48 @@ export class GameScene extends Phaser.Scene {
   private endGame(victory: boolean): void {
     this.spawnTimer?.destroy();
     this.autoSaveTimer?.destroy();
+    this.pathTrackingTimer?.destroy();
     this.animationManager.cancelAllAnimations();
     this.audioManager.stopAll();
     this.playerController.destroy();
 
     const playTime = Math.floor((Date.now() - this.startTime) / 1000);
 
+    const petalsByColorArray = PETAL_COLORS.map(c => ({
+      color: c,
+      count: this.petalsByColor.get(c) ?? 0
+    }));
+
+    const petalsByRegionArray = REGION_CONFIGS.map(r => ({
+      regionId: r.id,
+      count: this.petalsByRegion.get(r.id) ?? 0
+    }));
+
+    const collectionRate = playTime > 0 ? (this.totalPetalsCollected / (playTime / 60)) : 0;
+    const efficiencyScore = this.calculateEfficiencyScore(playTime);
+    const peakRegion = this.getPeakRegion();
+
+    const replayData: ReplayData = {
+      collectionPath: [...this.collectionPath],
+      synthesisLog: [...this.synthesisLog],
+      rewardSources: [...this.rewardSources],
+      petalsByColor: petalsByColorArray,
+      petalsByRegion: petalsByRegionArray,
+      efficiencyScore,
+      peakRegion,
+      highestSynthesisTier: this.highestSynthesisTier,
+      collectionRate
+    };
+
     this.saveManager.saveProgress({
       score: this.score,
       progress: this.awakeProgress,
       playTime,
-      victory
+      victory,
+      petalsCollected: this.totalPetalsCollected,
+      synthesisCount: this.synthesisCount,
+      rareCollected: this.rarePetalsCollected,
+      efficiencyScore
     });
 
     this.saveManager.clearGameState();
@@ -1255,8 +1360,30 @@ export class GameScene extends Phaser.Scene {
       playTime,
       victory,
       unlockedRegions: [...this.unlockedRegions],
-      rarePetalsCollected: this.rarePetalsCollected
+      rarePetalsCollected: this.rarePetalsCollected,
+      replayData
     });
+  }
+
+  private calculateEfficiencyScore(playTime: number): number {
+    if (playTime <= 0) return 0;
+    const scorePerMinute = this.score / (playTime / 60);
+    const synthEfficiency = this.synthesisCount > 0 ? Math.min(this.synthesisCount * 8, 300) : 0;
+    const rareBonus = this.rarePetalsCollected * 50;
+    const tierBonus = (this.highestSynthesisTier - 1) * 80;
+    return Math.round(scorePerMinute * 0.3 + synthEfficiency + rareBonus + tierBonus);
+  }
+
+  private getPeakRegion(): RegionId {
+    let maxCount = 0;
+    let peak: RegionId = 'initial';
+    this.petalsByRegion.forEach((count, regionId) => {
+      if (count > maxCount) {
+        maxCount = count;
+        peak = regionId;
+      }
+    });
+    return peak;
   }
 
   update(_time: number, delta: number): void {

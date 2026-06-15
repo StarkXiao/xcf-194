@@ -1,4 +1,4 @@
-import { SaveData, GameSaveData, GameState, SAVE_VERSION, Petal, InventoryItem } from '../types';
+import { SaveData, GameSaveData, GameState, SAVE_VERSION, Petal, InventoryItem, ReplayData } from '../types';
 
 const SAVE_KEY = 'dream_forest_save_v1';
 const GAME_STATE_KEY = 'dream_forest_game_state_v1';
@@ -42,7 +42,11 @@ export class SaveManager {
       totalPlayTime: data.totalPlayTime ?? 0,
       gamesPlayed: data.gamesPlayed ?? 0,
       lastPlayedAt: data.lastPlayedAt ?? 0,
-      version: this.currentVersion
+      version: this.currentVersion,
+      totalPetalsCollected: data.totalPetalsCollected ?? 0,
+      totalSynthesisCount: data.totalSynthesisCount ?? 0,
+      totalRareCollected: data.totalRareCollected ?? 0,
+      bestEfficiency: data.bestEfficiency ?? 0
     };
 
     if (this.compareVersions(version, '1.1.0') < 0) {
@@ -69,7 +73,11 @@ export class SaveManager {
       totalPlayTime: 0,
       gamesPlayed: 0,
       lastPlayedAt: 0,
-      version: this.currentVersion
+      version: this.currentVersion,
+      totalPetalsCollected: 0,
+      totalSynthesisCount: 0,
+      totalRareCollected: 0,
+      bestEfficiency: 0
     };
   }
 
@@ -78,6 +86,10 @@ export class SaveManager {
     progress: number;
     playTime: number;
     victory: boolean;
+    petalsCollected?: number;
+    synthesisCount?: number;
+    rareCollected?: number;
+    efficiencyScore?: number;
   }): void {
     const newBest = {
       bestScore: Math.max(this.saveData.bestScore, result.score),
@@ -85,7 +97,11 @@ export class SaveManager {
       totalPlayTime: this.saveData.totalPlayTime + result.playTime,
       gamesPlayed: this.saveData.gamesPlayed + 1,
       lastPlayedAt: Date.now(),
-      version: this.currentVersion
+      version: this.currentVersion,
+      totalPetalsCollected: this.saveData.totalPetalsCollected + (result.petalsCollected ?? 0),
+      totalSynthesisCount: this.saveData.totalSynthesisCount + (result.synthesisCount ?? 0),
+      totalRareCollected: this.saveData.totalRareCollected + (result.rareCollected ?? 0),
+      bestEfficiency: Math.max(this.saveData.bestEfficiency, result.efficiencyScore ?? 0)
     };
 
     this.saveData = newBest;
@@ -104,7 +120,11 @@ export class SaveManager {
       totalPlayTime: 0,
       gamesPlayed: 0,
       lastPlayedAt: Date.now(),
-      version: this.currentVersion
+      version: this.currentVersion,
+      totalPetalsCollected: 0,
+      totalSynthesisCount: 0,
+      totalRareCollected: 0,
+      bestEfficiency: 0
     };
     try {
       localStorage.removeItem(SAVE_KEY);
@@ -299,5 +319,52 @@ export class SaveManager {
   resetAll(): void {
     this.resetSave();
     this.clearGameState();
+  }
+
+  generateShareText(replayData: ReplayData, score: number, progress: number, playTime: number, victory: boolean): string {
+    const timeStr = `${Math.floor(playTime / 60)}:${(playTime % 60).toString().padStart(2, '0')}`;
+    const lines: string[] = [
+      '🌸 梦境森林 · 局内复盘 🌸',
+      `━━━━━━━━━━━━━━━━`,
+      `${victory ? '🎉 恋人已苏醒！' : '🌙 旅程暂告段落'}`,
+      `✨ 分数: ${score}  💖 进度: ${Math.floor(progress)}%`,
+      `⏱ 时长: ${timeStr}`,
+      '',
+      `📊 效率评分: ${replayData.efficiencyScore.toFixed(0)}`,
+      `🌸 采集效率: ${replayData.collectionRate.toFixed(1)} 朵/分`,
+      `⭐ 最高合成: Lv.${replayData.highestSynthesisTier}`,
+      '',
+      '🎨 花瓣采集:'
+    ];
+    replayData.petalsByColor.forEach(p => {
+      lines.push(`  ${p.color === 'pink' ? '🩷' : p.color === 'blue' ? '💙' : p.color === 'purple' ? '💜' : p.color === 'gold' ? '💛' : '🌈'} ${p.color} ×${p.count}`);
+    });
+    lines.push('', '🎁 奖励来源:');
+    replayData.rewardSources.forEach(r => {
+      lines.push(`  ${r.label}: ${r.score}`);
+    });
+    lines.push('', '#梦境森林 #花瓣之约');
+    return lines.join('\n');
+  }
+
+  copyToClipboard(text: string): boolean {
+    try {
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(text);
+        return true;
+      }
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      return true;
+    } catch (e) {
+      console.warn('[SaveManager] 复制到剪贴板失败', e);
+      return false;
+    }
   }
 }

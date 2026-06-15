@@ -37,6 +37,42 @@ export interface SaveData {
   gamesPlayed: number;
   lastPlayedAt: number;
   version: string;
+  totalPetalsCollected: number;
+  totalSynthesisCount: number;
+  totalRareCollected: number;
+  bestEfficiency: number;
+}
+
+export interface CollectionPathPoint {
+  x: number;
+  y: number;
+  t: number;
+}
+
+export interface SynthesisLogEntry {
+  tier: PetalTier;
+  color: PetalColor;
+  outputTier: PetalTier;
+  outputColor: PetalColor;
+  t: number;
+}
+
+export interface RewardSource {
+  label: string;
+  score: number;
+  color: string;
+}
+
+export interface ReplayData {
+  collectionPath: CollectionPathPoint[];
+  synthesisLog: SynthesisLogEntry[];
+  rewardSources: RewardSource[];
+  petalsByColor: { color: PetalColor; count: number }[];
+  petalsByRegion: { regionId: RegionId; count: number }[];
+  efficiencyScore: number;
+  peakRegion: RegionId;
+  highestSynthesisTier: PetalTier;
+  collectionRate: number;
 }
 
 export interface GameSaveData {
