@@ -672,12 +672,13 @@ export class ResultScene extends Phaser.Scene {
 
     const event = this.eventManager.getCurrentEvent();
     const progress = this.eventManager.getEventProgress();
+    const saveData = this.saveManager.getCurrentSave();
     if (!event || !progress) return startY;
 
     const y = startY;
     const panelX = GAME_WIDTH / 2 - 320;
     const panelW = 640;
-    const panelH = 260;
+    const panelH = 420;
 
     const panel = this.add.graphics();
     panel.fillStyle(0x1e1b4b, 0.92);
@@ -687,7 +688,7 @@ export class ResultScene extends Phaser.Scene {
     this.scrollContainer.add(panel);
 
     this.scrollContainer.add(
-      this.add.text(GAME_WIDTH / 2, y + 30, `${event.banner} 活动进度`, {
+      this.add.text(GAME_WIDTH / 2, y + 30, `${event.banner} ${event.name}`, {
         fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
         fontSize: '24px',
         color: '#fde68a',
@@ -705,46 +706,99 @@ export class ResultScene extends Phaser.Scene {
     const timeRemaining = this.eventManager.getTimeRemaining();
     const timeStr = this.eventManager.formatTimeRemaining(timeRemaining);
 
-    const stats = [
+    const progressStats = [
       { label: '⏰ 活动剩余', value: timeStr, color: '#86efac' },
-      { label: '🏆 阶段进度', value: `${stageProgress} / 第${currentStage}/${totalStages}阶`, color: '#fbbf24' },
+      { label: '🏆 阶段进度', value: `第 ${currentStage} / ${totalStages} 阶 (${stageProgress}花瓣)`, color: '#fbbf24' },
       { label: '📋 任务完成', value: `${completedTasks} / ${totalTasks}`, color: '#93c5fd' }
     ];
 
-    stats.forEach((stat, i) => {
-      const sy = y + 75 + i * 42;
+    progressStats.forEach((stat, i) => {
+      const sy = y + 65 + i * 38;
       this.scrollContainer.add(
-        this.add.text(panelX + 40, sy, stat.label, {
+        this.add.text(panelX + 30, sy, stat.label, {
           fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
-          fontSize: '18px',
+          fontSize: '17px',
           color: stat.color
         }).setOrigin(0, 0.5)
       );
       this.scrollContainer.add(
-        this.add.text(panelX + panelW - 40, sy, stat.value, {
+        this.add.text(panelX + panelW - 30, sy, stat.value, {
           fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
-          fontSize: '20px',
+          fontSize: '18px',
           color: '#fef3c7',
           fontStyle: 'bold'
         }).setOrigin(1, 0.5)
       );
     });
 
+    const dividerY = y + 185;
+    const divider = this.add.graphics();
+    divider.lineStyle(1, 0x6366f1, 0.4);
+    divider.lineBetween(panelX + 30, dividerY, panelX + panelW - 30, dividerY);
+    this.scrollContainer.add(divider);
+
+    this.scrollContainer.add(
+      this.add.text(panelX + 30, y + 205, '🎁 已获活动奖励', {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '18px',
+        color: '#fde68a',
+        fontStyle: 'bold'
+      }).setOrigin(0, 0.5)
+    );
+
+    const rewardStats = [
+      { label: '累计奖励分数', value: `${saveData.eventBonusScore} 分`, icon: '⭐', color: '#fbbf24' },
+      { label: '稀有花瓣奖励', value: `${saveData.eventRarePetals} 个`, icon: '💎', color: '#c084fc' },
+      { label: '合成加成次数', value: `${saveData.eventSynthesisBonus} 次`, icon: '⚡', color: '#34d399' }
+    ];
+
+    rewardStats.forEach((stat, i) => {
+      const sy = y + 240 + i * 40;
+      this.scrollContainer.add(
+        this.add.text(panelX + 50, sy, `${stat.icon} ${stat.label}`, {
+          fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+          fontSize: '16px',
+          color: '#c4b5fd'
+        }).setOrigin(0, 0.5)
+      );
+      this.scrollContainer.add(
+        this.add.text(panelX + panelW - 50, sy, stat.value, {
+          fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+          fontSize: '18px',
+          color: stat.color,
+          fontStyle: 'bold'
+        }).setOrigin(1, 0.5)
+      );
+    });
+
+    if (saveData.eventTitles.length > 0) {
+      const titlesY = y + 365;
+      this.scrollContainer.add(
+        this.add.text(panelX + 50, titlesY, `🏅 限定称号: ${saveData.eventTitles.join(', ')}`, {
+          fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+          fontSize: '15px',
+          color: '#fbbf24',
+          fontStyle: 'bold'
+        }).setOrigin(0, 0.5)
+      );
+    }
+
+    const btnY = y + panelH - 55;
     if (hasUnclaimed) {
       const btnBg = this.add.graphics();
       btnBg.fillStyle(0x059669, 0.9);
-      btnBg.fillRoundedRect(GAME_WIDTH / 2 - 100, y + 205, 200, 44, 22);
+      btnBg.fillRoundedRect(GAME_WIDTH / 2 - 120, btnY - 22, 240, 44, 22);
       btnBg.lineStyle(2, 0x34d399, 0.8);
-      btnBg.strokeRoundedRect(GAME_WIDTH / 2 - 100, y + 205, 200, 44, 22);
+      btnBg.strokeRoundedRect(GAME_WIDTH / 2 - 120, btnY - 22, 240, 44, 22);
       btnBg.setInteractive(
-        new Phaser.Geom.Rectangle(GAME_WIDTH / 2 - 100, y + 205, 200, 44),
+        new Phaser.Geom.Rectangle(GAME_WIDTH / 2 - 120, btnY - 22, 240, 44),
         Phaser.Geom.Rectangle.Contains
       );
       this.scrollContainer.add(btnBg);
 
-      const btnText = this.add.text(GAME_WIDTH / 2, y + 227, '🎁 领取奖励', {
+      const btnText = this.add.text(GAME_WIDTH / 2, btnY, '🎁 前往活动页领取奖励', {
         fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
-        fontSize: '20px',
+        fontSize: '19px',
         color: '#fef3c7',
         fontStyle: 'bold'
       }).setOrigin(0.5);
@@ -753,18 +807,65 @@ export class ResultScene extends Phaser.Scene {
       btnBg.on('pointerover', () => {
         btnBg.clear();
         btnBg.fillStyle(0x059669, 1);
-        btnBg.fillRoundedRect(GAME_WIDTH / 2 - 105, y + 200, 210, 54, 27);
+        btnBg.fillRoundedRect(GAME_WIDTH / 2 - 125, btnY - 27, 250, 54, 27);
         btnBg.lineStyle(2, 0x86efac, 1);
-        btnBg.strokeRoundedRect(GAME_WIDTH / 2 - 105, y + 200, 210, 54, 27);
+        btnBg.strokeRoundedRect(GAME_WIDTH / 2 - 125, btnY - 27, 250, 54, 27);
         btnText.setScale(1.05);
       });
 
       btnBg.on('pointerout', () => {
         btnBg.clear();
         btnBg.fillStyle(0x059669, 0.9);
-        btnBg.fillRoundedRect(GAME_WIDTH / 2 - 100, y + 205, 200, 44, 22);
+        btnBg.fillRoundedRect(GAME_WIDTH / 2 - 120, btnY - 22, 240, 44, 22);
         btnBg.lineStyle(2, 0x34d399, 0.8);
-        btnBg.strokeRoundedRect(GAME_WIDTH / 2 - 100, y + 205, 200, 44, 22);
+        btnBg.strokeRoundedRect(GAME_WIDTH / 2 - 120, btnY - 22, 240, 44, 22);
+        btnText.setScale(1);
+      });
+
+      btnBg.on('pointerdown', () => {
+        btnText.setScale(0.95);
+      });
+
+      btnBg.on('pointerup', () => {
+        btnText.setScale(1);
+        this.audioManager.playClick();
+        this.scene.start('EventScene');
+      });
+    } else {
+      const btnBg = this.add.graphics();
+      btnBg.fillStyle(0x4c1d95, 0.9);
+      btnBg.fillRoundedRect(GAME_WIDTH / 2 - 100, btnY - 22, 200, 44, 22);
+      btnBg.lineStyle(2, 0x818cf8, 0.6);
+      btnBg.strokeRoundedRect(GAME_WIDTH / 2 - 100, btnY - 22, 200, 44, 22);
+      btnBg.setInteractive(
+        new Phaser.Geom.Rectangle(GAME_WIDTH / 2 - 100, btnY - 22, 200, 44),
+        Phaser.Geom.Rectangle.Contains
+      );
+      this.scrollContainer.add(btnBg);
+
+      const btnText = this.add.text(GAME_WIDTH / 2, btnY, '查看活动详情', {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '18px',
+        color: '#c4b5fd',
+        fontStyle: 'bold'
+      }).setOrigin(0.5);
+      this.scrollContainer.add(btnText);
+
+      btnBg.on('pointerover', () => {
+        btnBg.clear();
+        btnBg.fillStyle(0x4c1d95, 1);
+        btnBg.fillRoundedRect(GAME_WIDTH / 2 - 105, btnY - 27, 210, 54, 27);
+        btnBg.lineStyle(2, 0xa78bfa, 0.8);
+        btnBg.strokeRoundedRect(GAME_WIDTH / 2 - 105, btnY - 27, 210, 54, 27);
+        btnText.setScale(1.05);
+      });
+
+      btnBg.on('pointerout', () => {
+        btnBg.clear();
+        btnBg.fillStyle(0x4c1d95, 0.9);
+        btnBg.fillRoundedRect(GAME_WIDTH / 2 - 100, btnY - 22, 200, 44, 22);
+        btnBg.lineStyle(2, 0x818cf8, 0.6);
+        btnBg.strokeRoundedRect(GAME_WIDTH / 2 - 100, btnY - 22, 200, 44, 22);
         btnText.setScale(1);
       });
 

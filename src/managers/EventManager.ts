@@ -9,6 +9,7 @@ import {
   DEFAULT_EVENT_CONFIG,
   EventRewardType
 } from '../types';
+import { SaveManager } from './SaveManager';
 
 const EVENT_SAVE_KEY = 'dream_forest_event_v1';
 
@@ -17,8 +18,10 @@ export class EventManager {
   private currentEvent: EventConfig | null = null;
   private eventProgress: EventProgress | null = null;
   private saveData: EventSaveData;
+  private saveManager: SaveManager;
 
   private constructor() {
+    this.saveManager = SaveManager.getInstance();
     this.saveData = this.loadSaveData();
     this.initializeCurrentEvent();
   }
@@ -256,6 +259,7 @@ export class EventManager {
     if (!task) return { success: false };
 
     taskProg.claimed = true;
+    this.applyReward(task.rewardType, task.rewardValue, task.rewardDetail);
     this.saveSaveData();
 
     console.log('[EventManager] 领取任务奖励:', task.name, task.rewardDetail);
@@ -284,6 +288,7 @@ export class EventManager {
     if (!stage) return { success: false };
 
     stageProg.claimed = true;
+    this.applyReward(stage.rewardType, stage.rewardValue, stage.rewardDetail);
     this.saveSaveData();
 
     console.log('[EventManager] 领取阶段奖励:', stage.name, stage.rewardDetail);
@@ -309,6 +314,29 @@ export class EventManager {
     );
 
     return hasUnclaimedTasks || hasUnclaimedStages;
+  }
+
+  private applyReward(type: EventRewardType, value: number, detail?: string): void {
+    switch (type) {
+      case 'score':
+        this.saveManager.addEventBonusScore(value);
+        break;
+      case 'rare_petal':
+        this.saveManager.addEventRarePetals(value);
+        break;
+      case 'synthesis_bonus':
+        this.saveManager.addEventSynthesisBonus(value);
+        break;
+      case 'exclusive_title':
+        if (detail) {
+          const titleMatch = detail.match(/限定称号[·\.](.+)/);
+          const title = titleMatch ? titleMatch[1] : detail;
+          this.saveManager.addEventTitle(title);
+        }
+        break;
+      case 'petal':
+        break;
+    }
   }
 
   getCompletedTaskCount(): number {

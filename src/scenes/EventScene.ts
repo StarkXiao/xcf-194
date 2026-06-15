@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { EventManager } from '../managers/EventManager';
 import { AudioManager } from '../managers/AudioManager';
+import { SaveManager } from '../managers/SaveManager';
 import {
   GAME_WIDTH,
   GAME_HEIGHT,
@@ -13,6 +14,9 @@ import {
 export class EventScene extends Phaser.Scene {
   private eventManager!: EventManager;
   private audioManager!: AudioManager;
+  private saveManager!: SaveManager;
+  private gameMode: 'new' | 'continue' = 'new';
+  private hasGameSave: boolean = false;
   private countdownText!: Phaser.GameObjects.Text;
   private countdownTimer!: Phaser.Time.TimerEvent;
   private scrollContainer!: Phaser.GameObjects.Container;
@@ -26,9 +30,17 @@ export class EventScene extends Phaser.Scene {
     super('EventScene');
   }
 
-  create(): void {
+  create(data?: { gameMode?: 'new' | 'continue' }): void {
     this.eventManager = EventManager.getInstance();
     this.audioManager = AudioManager.getInstance(this);
+    this.saveManager = SaveManager.getInstance();
+
+    this.gameMode = data?.gameMode || 'new';
+    this.hasGameSave = this.saveManager.hasGameState();
+
+    if (this.gameMode === 'continue' && !this.hasGameSave) {
+      this.gameMode = 'new';
+    }
 
     this.createBackground();
     this.createHeader();
@@ -519,14 +531,16 @@ export class EventScene extends Phaser.Scene {
     barBg.lineStyle(1, 0x312e81, 0.8);
     barBg.lineBetween(0, barY - 10, GAME_WIDTH, barY - 10);
 
-    this.createButton(GAME_WIDTH / 2 - 170, GAME_HEIGHT - 70, '开始游戏', 0x059669, () => {
-      this.audioManager.playClick();
-      this.scene.start('GameScene');
-    });
+    const startBtnText = this.gameMode === 'continue' ? '继续旅程' : '开始新旅程';
+    const startBtnColor = this.gameMode === 'continue' ? 0x059669 : 0x7c3aed;
 
-    this.createButton(GAME_WIDTH / 2 + 170, GAME_HEIGHT - 70, '返回菜单', 0x4c1d95, () => {
+    this.createButton(GAME_WIDTH / 2, GAME_HEIGHT - 70, startBtnText, startBtnColor, () => {
       this.audioManager.playClick();
-      this.scene.start('MenuScene');
+      if (this.gameMode === 'continue') {
+        this.scene.start('GameScene', { loadSave: true });
+      } else {
+        this.scene.start('GameScene');
+      }
     });
   }
 

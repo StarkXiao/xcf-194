@@ -46,7 +46,11 @@ export class SaveManager {
       totalPetalsCollected: data.totalPetalsCollected ?? 0,
       totalSynthesisCount: data.totalSynthesisCount ?? 0,
       totalRareCollected: data.totalRareCollected ?? 0,
-      bestEfficiency: data.bestEfficiency ?? 0
+      bestEfficiency: data.bestEfficiency ?? 0,
+      eventBonusScore: data.eventBonusScore ?? 0,
+      eventRarePetals: data.eventRarePetals ?? 0,
+      eventTitles: data.eventTitles ?? [],
+      eventSynthesisBonus: data.eventSynthesisBonus ?? 0
     };
 
     if (this.compareVersions(version, '1.1.0') < 0) {
@@ -77,7 +81,11 @@ export class SaveManager {
       totalPetalsCollected: 0,
       totalSynthesisCount: 0,
       totalRareCollected: 0,
-      bestEfficiency: 0
+      bestEfficiency: 0,
+      eventBonusScore: 0,
+      eventRarePetals: 0,
+      eventTitles: [],
+      eventSynthesisBonus: 0
     };
   }
 
@@ -101,7 +109,11 @@ export class SaveManager {
       totalPetalsCollected: this.saveData.totalPetalsCollected + (result.petalsCollected ?? 0),
       totalSynthesisCount: this.saveData.totalSynthesisCount + (result.synthesisCount ?? 0),
       totalRareCollected: this.saveData.totalRareCollected + (result.rareCollected ?? 0),
-      bestEfficiency: Math.max(this.saveData.bestEfficiency, result.efficiencyScore ?? 0)
+      bestEfficiency: Math.max(this.saveData.bestEfficiency, result.efficiencyScore ?? 0),
+      eventBonusScore: this.saveData.eventBonusScore,
+      eventRarePetals: this.saveData.eventRarePetals,
+      eventTitles: [...this.saveData.eventTitles],
+      eventSynthesisBonus: this.saveData.eventSynthesisBonus
     };
 
     this.saveData = newBest;
@@ -124,7 +136,11 @@ export class SaveManager {
       totalPetalsCollected: 0,
       totalSynthesisCount: 0,
       totalRareCollected: 0,
-      bestEfficiency: 0
+      bestEfficiency: 0,
+      eventBonusScore: 0,
+      eventRarePetals: 0,
+      eventTitles: [],
+      eventSynthesisBonus: 0
     };
     try {
       localStorage.removeItem(SAVE_KEY);
@@ -135,6 +151,45 @@ export class SaveManager {
 
   getCurrentSave(): SaveData {
     return { ...this.saveData };
+  }
+
+  addEventBonusScore(score: number): void {
+    this.saveData.eventBonusScore += score;
+    this.persistSave();
+    console.log('[SaveManager] 活动奖励分数已增加:', score, '总计:', this.saveData.eventBonusScore);
+  }
+
+  addEventRarePetals(count: number): void {
+    this.saveData.eventRarePetals += count;
+    this.saveData.totalRareCollected += count;
+    this.persistSave();
+    console.log('[SaveManager] 活动稀有花瓣已增加:', count, '总计:', this.saveData.eventRarePetals);
+  }
+
+  addEventTitle(title: string): void {
+    if (!this.saveData.eventTitles.includes(title)) {
+      this.saveData.eventTitles.push(title);
+      this.persistSave();
+      console.log('[SaveManager] 活动称号已获得:', title);
+    }
+  }
+
+  addEventSynthesisBonus(bonus: number): void {
+    this.saveData.eventSynthesisBonus += bonus;
+    this.persistSave();
+    console.log('[SaveManager] 活动合成加成已增加:', bonus, '总计:', this.saveData.eventSynthesisBonus);
+  }
+
+  getEventSynthesisBonus(): number {
+    return this.saveData.eventSynthesisBonus;
+  }
+
+  private persistSave(): void {
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify(this.saveData));
+    } catch (e) {
+      console.warn('[SaveManager] 持久化存档失败', e);
+    }
   }
 
   saveGameState(gameState: GameState, petals: Petal[]): boolean {

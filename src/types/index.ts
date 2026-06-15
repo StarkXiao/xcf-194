@@ -41,6 +41,10 @@ export interface SaveData {
   totalSynthesisCount: number;
   totalRareCollected: number;
   bestEfficiency: number;
+  eventBonusScore: number;
+  eventRarePetals: number;
+  eventTitles: string[];
+  eventSynthesisBonus: number;
 }
 
 export interface CollectionPathPoint {

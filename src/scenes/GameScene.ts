@@ -36,6 +36,8 @@ export class GameScene extends Phaser.Scene {
   private petalData: Map<Phaser.GameObjects.Container, Petal> = new Map();
   private awakeProgress: number = 0;
   private score: number = 0;
+  private eventBonusScore: number = 0;
+  private eventSynthesisBonus: number = 0;
   private totalPetalsCollected: number = 0;
   private synthesisCount: number = 0;
   private startTime: number = 0;
@@ -88,6 +90,11 @@ export class GameScene extends Phaser.Scene {
     this.synthesisSystem = new SynthesisSystem();
     this.playerController = new PlayerController(this);
     this.startTime = Date.now();
+
+    if (this.eventManager.isEventActive()) {
+      this.eventBonusScore = this.saveManager.getCurrentSave().eventBonusScore;
+      this.eventSynthesisBonus = this.saveManager.getEventSynthesisBonus();
+    }
 
     this.createBackground();
     this.createLover();
@@ -1385,6 +1392,18 @@ export class GameScene extends Phaser.Scene {
 
     this.saveManager.clearGameState();
 
+    const eventData = this.eventManager.isEventActive() ? {
+      eventActive: true,
+      eventBonusScore: this.eventBonusScore,
+      eventSynthesisBonus: this.eventSynthesisBonus,
+      scoreInEvent: this.score,
+      petalsInEvent: this.totalPetalsCollected,
+      synthesisInEvent: this.synthesisCount,
+      rareInEvent: this.rarePetalsCollected
+    } : {
+      eventActive: false
+    };
+
     this.scene.start('ResultScene', {
       score: this.score,
       awakeProgress: this.awakeProgress,
@@ -1394,7 +1413,8 @@ export class GameScene extends Phaser.Scene {
       victory,
       unlockedRegions: [...this.unlockedRegions],
       rarePetalsCollected: this.rarePetalsCollected,
-      replayData
+      replayData,
+      eventData
     });
   }
 

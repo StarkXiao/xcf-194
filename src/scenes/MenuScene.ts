@@ -126,6 +126,7 @@ export class MenuScene extends Phaser.Scene {
   private createButtons(): void {
     const hasGameSave = this.saveManager.hasGameState();
     const saveInfo = this.saveManager.getGameStateInfo();
+    const eventActive = this.eventManager.isEventActive();
 
     let startY = 750;
     if (hasGameSave) {
@@ -138,14 +139,22 @@ export class MenuScene extends Phaser.Scene {
 
       this.createButton(GAME_WIDTH / 2, startY, `继续游戏 (${saveDate})`, 0x059669, () => {
         this.audioManager.playClick();
-        this.scene.start('GameScene', { loadSave: true });
+        if (eventActive) {
+          this.scene.start('EventScene', { gameMode: 'continue' });
+        } else {
+          this.scene.start('GameScene', { loadSave: true });
+        }
       });
       startY += 110;
     }
 
     this.createButton(GAME_WIDTH / 2, startY, '开始新旅程', 0x7c3aed, () => {
       this.audioManager.playClick();
-      this.scene.start('GameScene');
+      if (eventActive) {
+        this.scene.start('EventScene', { gameMode: 'new' });
+      } else {
+        this.scene.start('GameScene');
+      }
     });
 
     this.createButton(GAME_WIDTH / 2, startY + 110, '游戏说明', 0x4c1d95, () => {
