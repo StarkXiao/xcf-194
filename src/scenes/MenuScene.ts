@@ -120,12 +120,31 @@ export class MenuScene extends Phaser.Scene {
   }
 
   private createButtons(): void {
-    this.createButton(GAME_WIDTH / 2, 750, '开始旅程', 0x7c3aed, () => {
+    const hasGameSave = this.saveManager.hasGameState();
+    const saveInfo = this.saveManager.getGameStateInfo();
+
+    let startY = 750;
+    if (hasGameSave) {
+      const saveDate = saveInfo ? new Date(saveInfo.savedAt).toLocaleString('zh-CN', {
+        month: 'numeric',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      }) : '';
+
+      this.createButton(GAME_WIDTH / 2, startY, `继续游戏 (${saveDate})`, 0x059669, () => {
+        this.audioManager.playClick();
+        this.scene.start('GameScene', { loadSave: true });
+      });
+      startY += 110;
+    }
+
+    this.createButton(GAME_WIDTH / 2, startY, '开始新旅程', 0x7c3aed, () => {
       this.audioManager.playClick();
       this.scene.start('GameScene');
     });
 
-    this.createButton(GAME_WIDTH / 2, 860, '游戏说明', 0x4c1d95, () => {
+    this.createButton(GAME_WIDTH / 2, startY + 110, '游戏说明', 0x4c1d95, () => {
       this.audioManager.playClick();
       this.showInstructions();
     });
@@ -201,10 +220,12 @@ export class MenuScene extends Phaser.Scene {
     const instructions = [
       '🌙 拖动/点击 控制角色在森林中移动',
       '✨ 靠近发光花瓣会自动收集',
-      '🌸 相同颜色和等级的花瓣可以合成',
+      '🌸 3个同色花瓣→升级 | 彩虹2个→升级',
+      '🔄 点击背包支持连续合成，自动升级',
+      '⚡ 开启自动补料，低阶花瓣自动补全',
       '⭐ 合成更高等级花瓣获得更多分数',
       '💖 唤醒值满100即可唤醒恋人',
-      '💾 游戏进度自动保存'
+      '💾 游戏进度自动保存，支持继续游戏'
     ];
 
     instructions.forEach((text, i) => {

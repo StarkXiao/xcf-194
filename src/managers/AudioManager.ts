@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { PetalTier, AudioCue } from '../types';
 
 export class AudioManager {
   private static instance: AudioManager;
@@ -6,6 +7,9 @@ export class AudioManager {
   private audioContext: AudioContext | null = null;
   private initialized: boolean = false;
   private enabled: boolean = true;
+  private activeTimeouts: NodeJS.Timeout[] = [];
+  private sfxVolume: number = 0.15;
+  private musicVolume: number = 0.1;
 
   private constructor() {}
 
@@ -17,6 +21,22 @@ export class AudioManager {
       AudioManager.instance.setScene(scene);
     }
     return AudioManager.instance;
+  }
+
+  setSfxVolume(volume: number): void {
+    this.sfxVolume = Math.max(0, Math.min(1, volume));
+  }
+
+  getSfxVolume(): number {
+    return this.sfxVolume;
+  }
+
+  setMusicVolume(volume: number): void {
+    this.musicVolume = Math.max(0, Math.min(1, volume));
+  }
+
+  getMusicVolume(): number {
+    return this.musicVolume;
   }
 
   setScene(scene: Phaser.Scene): void {
@@ -49,7 +69,7 @@ export class AudioManager {
     return true;
   }
 
-  private playTone(
+  protected playTone(
     frequency: number,
     duration: number,
     type: OscillatorType = 'sine',
@@ -122,5 +142,132 @@ export class AudioManager {
 
   isEnabled(): boolean {
     return this.enabled;
+  }
+
+  playSynthesisTiered(tier: PetalTier): void {
+    const baseFreq = 440 + (tier - 1) * 80;
+    const notes = [
+      baseFreq,
+      baseFreq * 1.25,
+      baseFreq * 1.5,
+      baseFreq * 2
+    ];
+    const volume = Math.min(0.2, this.sfxVolume + tier * 0.015);
+
+    notes.forEach((freq, i) => {
+      setTimeout(() => this.playTone(freq, 0.1 + tier * 0.01, 'triangle', volume), i * (70 - tier * 5));
+    });
+  }
+
+  playSynthesisChain(chainIndex: number, totalChain: number, tier?: PetalTier): void {
+    if (!this.ensureContext() || !this.audioContext) return;
+
+    const baseFreq = 523 + (tier ? (tier - 1) * 60 : 0);
+    const interval = Math.max(40, 80 - chainIndex * 5);
+    const volume = Math.min(0.25, this.sfxVolume + chainIndex * 0.01);
+
+    const chord = chainIndex === 0 ?
+      [baseFreq, baseFreq * 1.25, baseFreq * 1.5] :
+      [baseFreq * (1 + chainIndex * 0.1)];
+
+    chord.forEach((freq, i) => {
+      setTimeout(() => this.playTone(freq, 0.08, 'sine', volume), i * 30);
+    });
+
+    if (chainIndex === totalChain - 1 && totalChain > 1) {
+      setTimeout(() => this.playChainCompletion(totalChain), totalChain * 50);
+    }
+  }
+
+  private playChainCompletion(totalChain: number): void {
+    if (!this.ensureContext() || !this.audioContext) return;
+
+    const arpeggio = [523, 659, 784, 1047, 1319];
+    const volume = Math.min(0.25, this.sfxVolume + totalChain * 0.01);
+
+    arpeggio.forEach((freq, i) => {
+      setTimeout(() => this.playTone(freq, 0.12, 'triangle', volume), i * 60);
+    });
+
+    setTimeout(() => {
+      this.playTone(1047, 0.3, 'sine', volume * 0.8);
+      this.playTone(1319, 0.3, 'sine', volume * 0.6);
+    }, arpeggio.length * 60 + 100);
+  }
+
+  playSynthesisFail(): void {
+    this.playTone(220, 0.1, 'sawtooth', this.sfxVolume * 0.5);
+    setTimeout(() => this.playTone(180, 0.12, 'sawtooth', this.sfxVolume * 0.4), 60);
+  }
+
+  playAutoFeed(count: number): void {
+    if (!this.ensureContext() || !this.audioContext) return;
+
+    const baseFreq = 660;
+    for (let i = 0; i < Math.min(count, 5); i++) {
+      setTimeout(() => {
+        this.playTone(baseFreq + i * 40, 0.06, 'sine', this.sfxVolume * 0.6);
+      }, i * 50);
+    }
+  }
+
+  playTierUp(fromTier: PetalTier, toTier: PetalTier): void {
+    if (!this.ensureContext() || !this.audioContext) return;
+
+    const freqStep = 80;
+    const startFreq = 440 + (fromTier - 1) * freqStep;
+    const endFreq = 440 + (toTier - 1) * freqStep;
+    const steps = (toTier - fromTier) * 3;
+
+    for (let i = 0; i <= steps; i++) {
+      const freq = startFreq + (endFreq - startFreq) * (i / steps);
+      setTimeout(() => {
+        this.playTone(freq, 0.08, 'triangle', this.sfxVolume * 0.7);
+      }, i * 40);
+    }
+
+    setTimeout(() => {
+      this.playTone(endFreq, 0.15, 'sine', this.sfxVolume);
+      this.playTone(endFreq * 1.25, 0.15, 'sine', this.sfxVolume * 0.8);
+    }, steps * 40 + 50);
+  }
+
+  playCue(cue: AudioCue): void {
+    switch (cue.type) {
+      case 'collect':
+        this.playCollect();
+        break;
+      case 'synthesis':
+        if (cue.tier) {
+          this.playSynthesisTiered(cue.tier);
+        } else {
+          this.playSynthesis();
+        }
+        break;
+      case 'synthesis_chain':
+        this.playSynthesisChain(
+          cue.chainIndex ?? 0,
+          cue.totalChain ?? 1,
+          cue.tier
+        );
+        break;
+      case 'synthesis_fail':
+        this.playSynthesisFail();
+        break;
+      case 'click':
+        this.playClick();
+        break;
+      case 'victory':
+        this.playVictory();
+        break;
+      case 'auto_feed':
+        this.playAutoFeed(cue.tier ?? 1);
+        break;
+    }
+  }
+
+  stopAll(): void {
+    this.activeTimeouts.forEach(t => clearTimeout(t));
+    this.activeTimeouts = [];
   }
 }

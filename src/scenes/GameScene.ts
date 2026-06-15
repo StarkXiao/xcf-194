@@ -4,7 +4,17 @@ import { SynthesisSystem } from '../systems/SynthesisSystem';
 import { SaveManager } from '../managers/SaveManager';
 import { AudioManager } from '../managers/AudioManager';
 import { AnimationManager } from '../managers/AnimationManager';
-import { GAME_WIDTH, GAME_HEIGHT, AWAKEN_GOAL, Petal, PetalTier, PetalColor, PETAL_COLORS } from '../types';
+import {
+  GAME_WIDTH,
+  GAME_HEIGHT,
+  AWAKEN_GOAL,
+  Petal,
+  PetalTier,
+  PetalColor,
+  PETAL_COLORS,
+  GameState,
+  Petal as PetalType
+} from '../types';
 
 export class GameScene extends Phaser.Scene {
   private playerController!: PlayerController;
@@ -29,8 +39,16 @@ export class GameScene extends Phaser.Scene {
   private lover!: Phaser.GameObjects.Container;
   private isCompleted: boolean = false;
   private spawnTimer!: Phaser.Time.TimerEvent;
+  private autoSaveTimer!: Phaser.Time.TimerEvent;
 
   private bgParticles: Phaser.GameObjects.Graphics[] = [];
+
+  private isSynthesizing: boolean = false;
+  private autoFeedButton!: Phaser.GameObjects.Container;
+  private autoFeedStatusText!: Phaser.GameObjects.Text;
+  private saveStatusText!: Phaser.GameObjects.Text;
+
+  private loadingGameState: boolean = false;
 
   constructor() {
     super('GameScene');
@@ -49,11 +67,26 @@ export class GameScene extends Phaser.Scene {
     this.createHUD();
     this.createInventory();
     this.createBackButton();
+    this.createAutoFeedButton();
+    this.createSaveStatus();
     this.playerController.create(this.cameras.main.width / 2, this.cameras.main.height - 450);
 
-    this.spawnInitialPetals();
+    const initData = this.scene.settings.data as { loadSave?: boolean } | undefined;
+    if (initData?.loadSave && this.saveManager.hasGameState()) {
+      this.loadGameState();
+    } else {
+      this.spawnInitialPetals();
+    }
+
     this.startPetalSpawner();
+    this.startAutoSave();
     this.setupCollisions();
+
+    const validation = this.synthesisSystem.validateInventory();
+    if (!validation.valid) {
+      console.warn('[GameScene] 背包校验发现问题:', validation.issues);
+      this.updateInventoryDisplay();
+    }
   }
 
   private createBackground(): void {
@@ -319,6 +352,160 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  private createAutoFeedButton(): void {
+    this.autoFeedButton = this.add.container(100, 227);
+
+    const btnBg = this.add.graphics();
+    const isEnabled = this.synthesisSystem.isAutoFeedEnabled();
+    btnBg.fillStyle(isEnabled ? 0x059669 : 0x374151, 0.9);
+    btnBg.fillRoundedRect(-50, -22, 100, 44, 22);
+    btnBg.lineStyle(2, isEnabled ? 0x34d399 : 0x6b7280, 0.8);
+    btnBg.strokeRoundedRect(-50, -22, 100, 44, 22);
+    this.autoFeedButton.add(btnBg);
+    this.autoFeedButton.setData('bg', btnBg);
+
+    const btnText = this.add.text(0, 0, isEnabled ? '✓ 自动补料' : '✗ 自动补料', {
+      fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+      fontSize: '16px',
+      color: isEnabled ? '#a7f3d0' : '#9ca3af',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.autoFeedButton.add(btnText);
+    this.autoFeedButton.setData('text', btnText);
+
+    this.autoFeedButton.setSize(100, 44);
+    this.autoFeedButton.setInteractive();
+    this.autoFeedButton.on('pointerdown', () => this.toggleAutoFeed());
+
+    this.autoFeedStatusText = this.add.text(100, 260, '低阶花瓣自动升级补全', {
+      fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+      fontSize: '12px',
+      color: '#a78bfa'
+    }).setOrigin(0.5);
+  }
+
+  private toggleAutoFeed(): void {
+    const newState = !this.synthesisSystem.isAutoFeedEnabled();
+    this.synthesisSystem.setAutoFeedEnabled(newState);
+    this.audioManager.playClick();
+
+    const btnBg = this.autoFeedButton.getData('bg') as Phaser.GameObjects.Graphics;
+    const btnText = this.autoFeedButton.getData('text') as Phaser.GameObjects.Text;
+
+    btnBg.clear();
+    btnBg.fillStyle(newState ? 0x059669 : 0x374151, 0.9);
+    btnBg.fillRoundedRect(-50, -22, 100, 44, 22);
+    btnBg.lineStyle(2, newState ? 0x34d399 : 0x6b7280, 0.8);
+    btnBg.strokeRoundedRect(-50, -22, 100, 44, 22);
+
+    btnText.setText(newState ? '✓ 自动补料' : '✗ 自动补料');
+    btnText.setColor(newState ? '#a7f3d0' : '#9ca3af');
+
+    this.updateInventoryDisplay();
+  }
+
+  private createSaveStatus(): void {
+    this.saveStatusText = this.add.text(GAME_WIDTH / 2, 227, '💾 自动保存中', {
+      fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+      fontSize: '14px',
+      color: '#86efac'
+    }).setOrigin(0.5);
+  }
+
+  private startAutoSave(): void {
+    this.autoSaveTimer = this.time.addEvent({
+      delay: 10000,
+      loop: true,
+      callback: () => {
+        if (!this.isCompleted && !this.loadingGameState) {
+          this.saveGameState();
+        }
+      }
+    });
+  }
+
+  private saveGameState(): void {
+    const gameState: GameState = {
+      petals: [],
+      inventory: this.synthesisSystem.getInventoryCopy(),
+      score: this.score,
+      awakeProgress: this.awakeProgress,
+      totalPetalsCollected: this.totalPetalsCollected,
+      synthesisCount: this.synthesisCount,
+      playTime: Math.floor((Date.now() - this.startTime) / 1000),
+      isCompleted: this.isCompleted
+    };
+
+    const petalDataArray: PetalType[] = [];
+    this.petals.forEach((container) => {
+      const data = this.petalData.get(container);
+      if (data && !data.collected) {
+        petalDataArray.push({ ...data, x: container.x, y: container.y });
+      }
+    });
+
+    const success = this.saveManager.saveGameState(gameState, petalDataArray);
+    if (success && this.saveStatusText) {
+      this.saveStatusText.setText('💾 已保存 ' + new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }));
+      this.saveStatusText.setColor('#86efac');
+
+      this.time.delayedCall(2000, () => {
+        if (this.saveStatusText) {
+          this.saveStatusText.setText('💾 自动保存中');
+          this.saveStatusText.setColor('#a78bfa');
+        }
+      });
+    }
+  }
+
+  private loadGameState(): void {
+    this.loadingGameState = true;
+    const saved = this.saveManager.loadGameState();
+
+    if (!saved) {
+      this.loadingGameState = false;
+      this.spawnInitialPetals();
+      return;
+    }
+
+    const { gameState, petals } = saved;
+
+    this.score = gameState.score;
+    this.awakeProgress = gameState.awakeProgress;
+    this.totalPetalsCollected = gameState.totalPetalsCollected;
+    this.synthesisCount = gameState.synthesisCount;
+    this.isCompleted = gameState.isCompleted;
+    this.startTime = Date.now() - (gameState.playTime * 1000);
+
+    this.synthesisSystem.setInventory(gameState.inventory);
+
+    this.petals.forEach(p => p.destroy());
+    this.petals = [];
+    this.petalData.clear();
+
+    petals.forEach(petalData => {
+      const petalContainer = this.add.container(petalData.x, petalData.y);
+      this.petalData.set(petalContainer, { ...petalData });
+      this.petals.push(petalContainer);
+      this.createPetalVisual(petalContainer, petalData.color, petalData.tier);
+      this.animationManager.playPetalFloat(petalContainer);
+
+      if (this.physics.world) {
+        this.physics.add.existing(petalContainer);
+        const body = petalContainer.body as Phaser.Physics.Arcade.Body;
+        body.setCircle(25);
+        body.setAllowGravity(false);
+      }
+    });
+
+    this.updateScore();
+    this.updateProgressBar();
+    this.updateInventoryDisplay();
+
+    this.loadingGameState = false;
+    console.log('[GameScene] 游戏状态已加载');
+  }
+
   private spawnInitialPetals(): void {
     for (let i = 0; i < 6; i++) {
       this.spawnPetal();
@@ -477,17 +664,29 @@ export class GameScene extends Phaser.Scene {
   }
 
   private onColorSlotClick(color: PetalColor): void {
-    const lowestTier = this.getLowestSynthesizableTier(color);
-    if (lowestTier === null) {
-      const slot = this.inventorySlots.get(color);
-      if (slot) this.animationManager.playShake(slot);
+    if (this.isSynthesizing || this.animationManager.isPlaying()) {
       return;
     }
 
-    const result = this.synthesisSystem.trySynthesizeMax(lowestTier, color);
+    const lowestTier = this.getLowestSynthesizableTier(color);
+    const canAutoFeed = lowestTier === null && this.synthesisSystem.canAutoFeedFor(1, color);
+
+    if (lowestTier === null && !canAutoFeed) {
+      const slot = this.inventorySlots.get(color);
+      if (slot) {
+        this.animationManager.playShake(slot);
+        this.audioManager.playSynthesisFail();
+        this.animationManager.playSynthesisFailEffect(slot.x + GAME_WIDTH / 2, slot.y + GAME_HEIGHT - 720, '材料不足');
+      }
+      return;
+    }
+
+    const startTier = lowestTier ?? 1;
+    this.isSynthesizing = true;
+
+    const result = this.synthesisSystem.tryContinuousSynthesize(startTier, color, 20, true);
 
     if (result.success) {
-      this.audioManager.playSynthesis();
       this.synthesisCount += result.totalSynthesized;
 
       let totalScore = 0;
@@ -501,56 +700,143 @@ export class GameScene extends Phaser.Scene {
       this.updateScore();
       this.updateProgressBar();
 
-      this.animationManager.playSynthesisEffect(
-        GAME_WIDTH / 2,
-        GAME_HEIGHT - 720 + 35,
-        color
-      );
+      if (result.autoFedCount > 0) {
+        this.audioManager.playAutoFeed(result.autoFedCount);
+        const slot = this.inventorySlots.get(color);
+        if (slot) {
+          this.animationManager.playAutoFeedEffect(
+            slot.x + GAME_WIDTH / 2 - 100,
+            slot.y + GAME_HEIGHT - 720,
+            slot.x + GAME_WIDTH / 2,
+            slot.y + GAME_HEIGHT - 720,
+            color,
+            result.autoFedCount
+          );
+        }
+      }
+
+      for (let i = 0; i < result.chainLength; i++) {
+        const outputTier = result.outputs.find((o, idx) => {
+          const countBefore = result.outputs.slice(0, idx).reduce((sum, o2) => sum + o2.count, 0);
+          return i >= countBefore && i < countBefore + o.count;
+        });
+
+        this.audioManager.playSynthesisChain(i, result.chainLength, outputTier?.tier);
+
+        this.animationManager.playSynthesisEffectChain(
+          GAME_WIDTH / 2,
+          GAME_HEIGHT - 720 + 35,
+          color,
+          i,
+          result.chainLength,
+          outputTier?.tier
+        );
+      }
+
+      const slot = this.inventorySlots.get(color);
+      if (slot) {
+        this.animationManager.playInventoryUpdateEffect(
+          slot.x + GAME_WIDTH / 2,
+          slot.y + GAME_HEIGHT - 720,
+          color,
+          true
+        );
+      }
 
       this.updateInventoryDisplay();
 
-      if (this.awakeProgress >= AWAKEN_GOAL && !this.isCompleted) {
-        this.isCompleted = true;
-        this.time.delayedCall(600, () => this.endGame(true));
-      }
+      const totalDelay = this.animationManager.calculateChainDelay(0, result.chainLength) * result.chainLength + 1000;
+      this.time.delayedCall(totalDelay, () => {
+        this.isSynthesizing = false;
+        if (this.awakeProgress >= AWAKEN_GOAL && !this.isCompleted) {
+          this.isCompleted = true;
+          this.time.delayedCall(600, () => this.endGame(true));
+        }
+      });
     } else {
+      this.isSynthesizing = false;
       const slot = this.inventorySlots.get(color);
       if (slot) this.animationManager.playShake(slot);
+      this.audioManager.playSynthesisFail();
     }
   }
 
   private onRainbowConvertClick(): void {
-    if (!this.synthesisSystem.canMakeRainbow()) {
-      const btn = this.inventorySlots.get('rainbow_btn');
-      if (btn) this.animationManager.playShake(btn);
+    if (this.isSynthesizing || this.animationManager.isPlaying()) {
       return;
     }
 
-    const result = this.synthesisSystem.trySynthesizeRainbowMax();
+    if (!this.synthesisSystem.canMakeRainbow()) {
+      const btn = this.inventorySlots.get('rainbow_btn');
+      if (btn) {
+        this.animationManager.playShake(btn);
+        this.audioManager.playSynthesisFail();
+        this.animationManager.playSynthesisFailEffect(btn.x + GAME_WIDTH / 2, btn.y + GAME_HEIGHT - 720, '材料不足');
+      }
+      return;
+    }
+
+    this.isSynthesizing = true;
+
+    const result = this.synthesisSystem.tryRainbowContinuousSynthesize(20);
 
     if (result.success) {
-      this.audioManager.playSynthesis();
-      this.synthesisCount += result.count;
+      this.synthesisCount += result.totalSynthesized;
 
-      const scoreGain = 2 * 100 * result.count;
-      const progressGain = 2 * 4 * result.count;
-      this.score += scoreGain;
-      this.awakeProgress = Math.min(AWAKEN_GOAL, this.awakeProgress + progressGain);
+      let totalScore = 0;
+      let totalProgress = 0;
+      result.outputs.forEach((output) => {
+        totalScore += output.tier * 100 * output.count;
+        totalProgress += output.tier * 4 * output.count;
+      });
+      this.score += totalScore;
+      this.awakeProgress = Math.min(AWAKEN_GOAL, this.awakeProgress + totalProgress);
       this.updateScore();
       this.updateProgressBar();
 
-      this.animationManager.playSynthesisEffect(
-        GAME_WIDTH / 2 + 280,
-        GAME_HEIGHT - 720 - 25,
-        'rainbow'
-      );
+      for (let i = 0; i < result.chainLength; i++) {
+        const outputTier = result.outputs.find((o, idx) => {
+          const countBefore = result.outputs.slice(0, idx).reduce((sum, o2) => sum + o2.count, 0);
+          return i >= countBefore && i < countBefore + o.count;
+        });
+
+        this.audioManager.playSynthesisChain(i, result.chainLength, outputTier?.tier);
+
+        this.animationManager.playSynthesisEffectChain(
+          GAME_WIDTH / 2 + 280,
+          GAME_HEIGHT - 720 - 25,
+          'rainbow',
+          i,
+          result.chainLength,
+          outputTier?.tier
+        );
+      }
+
+      const btn = this.inventorySlots.get('rainbow_btn');
+      if (btn) {
+        this.animationManager.playInventoryUpdateEffect(
+          btn.x + GAME_WIDTH / 2,
+          btn.y + GAME_HEIGHT - 720,
+          'rainbow',
+          true
+        );
+      }
 
       this.updateInventoryDisplay();
 
-      if (this.awakeProgress >= AWAKEN_GOAL && !this.isCompleted) {
-        this.isCompleted = true;
-        this.time.delayedCall(600, () => this.endGame(true));
-      }
+      const totalDelay = this.animationManager.calculateChainDelay(0, result.chainLength) * result.chainLength + 1000;
+      this.time.delayedCall(totalDelay, () => {
+        this.isSynthesizing = false;
+        if (this.awakeProgress >= AWAKEN_GOAL && !this.isCompleted) {
+          this.isCompleted = true;
+          this.time.delayedCall(600, () => this.endGame(true));
+        }
+      });
+    } else {
+      this.isSynthesizing = false;
+      const btn = this.inventorySlots.get('rainbow_btn');
+      if (btn) this.animationManager.playShake(btn);
+      this.audioManager.playSynthesisFail();
     }
   }
 
@@ -653,6 +939,9 @@ export class GameScene extends Phaser.Scene {
 
   private endGame(victory: boolean): void {
     this.spawnTimer?.destroy();
+    this.autoSaveTimer?.destroy();
+    this.animationManager.cancelAllAnimations();
+    this.audioManager.stopAll();
     this.playerController.destroy();
 
     const playTime = Math.floor((Date.now() - this.startTime) / 1000);
@@ -663,6 +952,8 @@ export class GameScene extends Phaser.Scene {
       playTime,
       victory
     });
+
+    this.saveManager.clearGameState();
 
     this.scene.start('ResultScene', {
       score: this.score,

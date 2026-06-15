@@ -34,6 +34,13 @@ export interface SaveData {
   totalPlayTime: number;
   gamesPlayed: number;
   lastPlayedAt: number;
+  version: string;
+}
+
+export interface GameSaveData {
+  gameState: GameState;
+  savedAt: number;
+  version: string;
 }
 
 export interface SynthesisRecipe {
@@ -41,6 +48,56 @@ export interface SynthesisRecipe {
   output: { tier: PetalTier; color: PetalColor; count: number };
   name: string;
 }
+
+export interface SynthesisQueueItem {
+  tier: PetalTier;
+  color: PetalColor;
+  timestamp: number;
+}
+
+export interface ContinuousSynthesisResult {
+  success: boolean;
+  totalSynthesized: number;
+  highestTier: PetalTier;
+  outputs: { tier: PetalTier; color: PetalColor; count: number }[];
+  chainLength: number;
+  autoFedCount: number;
+}
+
+export interface AutoFeedResult {
+  success: boolean;
+  fedCount: number;
+  items: { tier: PetalTier; color: PetalColor; count: number }[];
+}
+
+export interface InventoryValidationResult {
+  valid: boolean;
+  issues: string[];
+  correctedInventory: InventoryItem[];
+}
+
+export interface AnimationTiming {
+  synthesisDelay: number;
+  chainSpeedMultiplier: number;
+  minDelay: number;
+  maxDelay: number;
+}
+
+export interface AudioCue {
+  type: 'collect' | 'synthesis' | 'synthesis_chain' | 'synthesis_fail' | 'click' | 'victory' | 'auto_feed';
+  tier?: PetalTier;
+  chainIndex?: number;
+  totalChain?: number;
+}
+
+export const SAVE_VERSION = '1.1.0';
+
+export const DEFAULT_ANIMATION_TIMING: AnimationTiming = {
+  synthesisDelay: 250,
+  chainSpeedMultiplier: 0.9,
+  minDelay: 80,
+  maxDelay: 500
+};
 
 export const PETAL_COLORS: PetalColor[] = ['pink', 'blue', 'purple', 'gold', 'rainbow'];
 

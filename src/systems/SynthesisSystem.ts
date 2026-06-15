@@ -1,4 +1,16 @@
-import { InventoryItem, PetalTier, PetalColor, PETAL_TIER_NAMES, SynthesisRecipe, Petal } from '../types';
+import {
+  InventoryItem,
+  PetalTier,
+  PetalColor,
+  PETAL_TIER_NAMES,
+  SynthesisRecipe,
+  Petal,
+  SynthesisQueueItem,
+  ContinuousSynthesisResult,
+  AutoFeedResult,
+  InventoryValidationResult,
+  Petal as PetalType
+} from '../types';
 
 export interface SynthesisResult {
   success: boolean;
@@ -9,6 +21,9 @@ export interface SynthesisResult {
 export class SynthesisSystem {
   private inventory: InventoryItem[] = [];
   private recipes: SynthesisRecipe[] = [];
+  private synthesisQueue: SynthesisQueueItem[] = [];
+  private autoFeedEnabled: boolean = true;
+  private pendingPetals: PetalType[] = [];
 
   constructor() {
     this.initializeRecipes();
@@ -252,5 +267,332 @@ export class SynthesisSystem {
       tier: i.tier,
       color: i.color
     }));
+  }
+
+  validateInventory(): InventoryValidationResult {
+    const issues: string[] = [];
+    const corrected: InventoryItem[] = [];
+    const validTiers: PetalTier[] = [1, 2, 3, 4, 5];
+    const validColors: PetalColor[] = ['pink', 'blue', 'purple', 'gold', 'rainbow'];
+
+    const seen = new Map<string, InventoryItem>();
+
+    for (const item of this.inventory) {
+      if (!validTiers.includes(item.tier)) {
+        issues.push(`无效的花瓣等级: ${item.tier}`);
+        continue;
+      }
+
+      if (!validColors.includes(item.color)) {
+        issues.push(`无效的花瓣颜色: ${item.color}`);
+        continue;
+      }
+
+      if (typeof item.count !== 'number' || isNaN(item.count)) {
+        issues.push(`无效的数量值: ${item.count}`);
+        continue;
+      }
+
+      if (item.count <= 0) {
+        issues.push(`移除数量为 ${item.count} 的物品: ${PETAL_TIER_NAMES[item.tier]}(${item.color})`);
+        continue;
+      }
+
+      const key = `${item.tier}-${item.color}`;
+      if (seen.has(key)) {
+        const existing = seen.get(key)!;
+        existing.count += item.count;
+        issues.push(`合并重复物品: ${PETAL_TIER_NAMES[item.tier]}(${item.color}) x${item.count}`);
+      } else {
+        seen.set(key, { ...item });
+      }
+    }
+
+    corrected.push(...seen.values());
+
+    corrected.sort((a, b) => {
+      if (a.color !== b.color) return a.color.localeCompare(b.color);
+      return a.tier - b.tier;
+    });
+
+    const hadIssues = issues.length > 0;
+    if (hadIssues) {
+      this.inventory = corrected;
+      issues.unshift(`背包校验完成，发现 ${issues.length} 个问题`);
+    }
+
+    return {
+      valid: !hadIssues,
+      issues,
+      correctedInventory: corrected
+    };
+  }
+
+  setAutoFeedEnabled(enabled: boolean): void {
+    this.autoFeedEnabled = enabled;
+  }
+
+  isAutoFeedEnabled(): boolean {
+    return this.autoFeedEnabled;
+  }
+
+  addPendingPetal(petal: PetalType): void {
+    if (!petal.collected) {
+      this.pendingPetals.push(petal);
+    }
+  }
+
+  getPendingPetals(): PetalType[] {
+    return [...this.pendingPetals];
+  }
+
+  clearPendingPetals(): void {
+    this.pendingPetals = [];
+  }
+
+  tryAutoFeed(targetTier: PetalTier, targetColor: PetalColor): AutoFeedResult {
+    if (!this.autoFeedEnabled) {
+      return { success: false, fedCount: 0, items: [] };
+    }
+
+    const needCount = targetColor === 'rainbow' ? 2 : 3;
+    const currentCount = this.getItemCount(targetTier, targetColor);
+    const deficit = needCount - currentCount;
+
+    if (deficit <= 0) {
+      return { success: false, fedCount: 0, items: [] };
+    }
+
+    const fedItems: { tier: PetalTier; color: PetalColor; count: number }[] = [];
+    let totalFed = 0;
+
+    const lowerTiers: PetalTier[] = [];
+    for (let t: PetalTier = 1; t < targetTier; t = (t + 1) as PetalTier) {
+      lowerTiers.unshift(t as PetalTier);
+    }
+
+    for (const tier of lowerTiers) {
+      if (totalFed >= deficit) break;
+
+      const available = this.getItemCount(tier, targetColor);
+      if (available > 0) {
+        const toFeed = Math.min(available, deficit - totalFed);
+        this.removeFromInventory(tier, targetColor, toFeed);
+        this.addToInventory(targetTier, targetColor);
+
+        fedItems.push({ tier, color: targetColor, count: toFeed });
+        totalFed += toFeed;
+      }
+    }
+
+    if (totalFed > 0) {
+      const available = this.getItemCount(targetTier, targetColor);
+      if (available >= needCount) {
+        return { success: true, fedCount: totalFed, items: fedItems };
+      }
+    }
+
+    for (const item of fedItems) {
+      this.removeFromInventory(targetTier, targetColor, item.count);
+      for (let i = 0; i < item.count; i++) {
+        this.addToInventory(item.tier, item.color);
+      }
+    }
+
+    return { success: false, fedCount: 0, items: [] };
+  }
+
+  addToSynthesisQueue(tier: PetalTier, color: PetalColor): void {
+    this.synthesisQueue.push({
+      tier,
+      color,
+      timestamp: Date.now()
+    });
+  }
+
+  getSynthesisQueue(): SynthesisQueueItem[] {
+    return [...this.synthesisQueue];
+  }
+
+  clearSynthesisQueue(): void {
+    this.synthesisQueue = [];
+  }
+
+  processSynthesisQueue(): SynthesisResult[] {
+    const results: SynthesisResult[] = [];
+    const queueCopy = [...this.synthesisQueue];
+    this.synthesisQueue = [];
+
+    for (const item of queueCopy) {
+      const result = this.trySynthesize(item.tier, item.color);
+      results.push(result);
+    }
+
+    return results;
+  }
+
+  tryContinuousSynthesize(
+    tier: PetalTier,
+    color: PetalColor,
+    maxChain: number = 10,
+    useAutoFeed: boolean = true
+  ): ContinuousSynthesisResult {
+    const validation = this.validateInventory();
+    if (!validation.valid) {
+      console.warn('[SynthesisSystem] 背包校验发现问题:', validation.issues);
+    }
+
+    let totalSynth = 0;
+    const outputs: { tier: PetalTier; color: PetalColor; count: number }[] = [];
+    let currentTier = tier;
+    let highestTier = tier;
+    let chainLength = 0;
+    let autoFedCount = 0;
+
+    while (currentTier < 5 && chainLength < maxChain) {
+      const needCount = color === 'rainbow' ? 2 : 3;
+      let count = this.getItemCount(currentTier as PetalTier, color);
+
+      if (count < needCount && useAutoFeed && this.autoFeedEnabled) {
+        const autoFeedResult = this.tryAutoFeed(currentTier as PetalTier, color);
+        if (autoFeedResult.success) {
+          autoFedCount += autoFeedResult.fedCount;
+          count = this.getItemCount(currentTier as PetalTier, color);
+        }
+      }
+
+      if (count < needCount) break;
+
+      const recipe = this.recipes.find(r =>
+        r.input.length === 1 &&
+        r.input[0].tier === currentTier &&
+        r.input[0].color === color
+      );
+
+      if (!recipe) break;
+
+      const times = Math.floor(count / needCount);
+      let synthesizedThisTier = 0;
+
+      for (let i = 0; i < times && chainLength < maxChain; i++) {
+        const result = this.trySynthesize(currentTier as PetalTier, color);
+        if (result.success && result.output) {
+          totalSynth++;
+          chainLength++;
+          synthesizedThisTier++;
+          highestTier = Math.max(highestTier, result.output.tier) as PetalTier;
+
+          const existing = outputs.find(o => o.tier === result.output!.tier && o.color === result.output!.color);
+          if (existing) {
+            existing.count += result.output.count;
+          } else {
+            outputs.push({ ...result.output });
+          }
+        } else {
+          break;
+        }
+      }
+
+      if (synthesizedThisTier === 0) break;
+
+      currentTier = (currentTier + 1) as PetalTier;
+    }
+
+    return {
+      success: totalSynth > 0,
+      totalSynthesized: totalSynth,
+      highestTier,
+      outputs,
+      chainLength,
+      autoFedCount
+    };
+  }
+
+  tryRainbowContinuousSynthesize(
+    maxChain: number = 10
+  ): {
+    success: boolean;
+    totalSynthesized: number;
+    highestTier: PetalTier;
+    outputs: { tier: PetalTier; color: PetalColor; count: number }[];
+    chainLength: number;
+    rainbowCount: number;
+  } {
+    const validation = this.validateInventory();
+    if (!validation.valid) {
+      console.warn('[SynthesisSystem] 背包校验发现问题:', validation.issues);
+    }
+
+    let rainbowCount = 0;
+    while (this.canMakeRainbow() && rainbowCount < maxChain) {
+      const result = this.trySynthesizeRainbow();
+      if (result.success) {
+        rainbowCount++;
+      } else {
+        break;
+      }
+    }
+
+    if (rainbowCount === 0) {
+      return {
+        success: false,
+        totalSynthesized: 0,
+        highestTier: 1,
+        outputs: [],
+        chainLength: 0,
+        rainbowCount: 0
+      };
+    }
+
+    const continuousResult = this.tryContinuousSynthesize(2, 'rainbow', maxChain - rainbowCount, true);
+
+    const finalOutputs = [...continuousResult.outputs];
+    if (rainbowCount > 0) {
+      const existing = finalOutputs.find(o => o.tier === 2 && o.color === 'rainbow');
+      if (existing) {
+        existing.count += rainbowCount;
+      } else {
+        finalOutputs.push({ tier: 2, color: 'rainbow', count: rainbowCount });
+      }
+    }
+
+    return {
+      success: true,
+      totalSynthesized: rainbowCount + continuousResult.totalSynthesized,
+      highestTier: Math.max(2, continuousResult.highestTier) as PetalTier,
+      outputs: finalOutputs,
+      chainLength: rainbowCount + continuousResult.chainLength,
+      rainbowCount
+    };
+  }
+
+  canAutoFeedFor(tier: PetalTier, color: PetalColor): boolean {
+    if (!this.autoFeedEnabled) return false;
+
+    const needCount = color === 'rainbow' ? 2 : 3;
+    const currentCount = this.getItemCount(tier, color);
+
+    if (currentCount >= needCount) return false;
+
+    const lowerTiers: PetalTier[] = [];
+    for (let t: PetalTier = 1; t < tier; t = (t + 1) as PetalTier) {
+      lowerTiers.unshift(t as PetalTier);
+    }
+
+    let lowerTotal = 0;
+    for (const t of lowerTiers) {
+      lowerTotal += this.getItemCount(t, color);
+    }
+
+    return currentCount + lowerTotal >= needCount;
+  }
+
+  setInventory(inventory: InventoryItem[]): void {
+    this.inventory = inventory.map(item => ({ ...item }));
+    this.validateInventory();
+  }
+
+  getInventoryCopy(): InventoryItem[] {
+    return this.inventory.map(item => ({ ...item }));
   }
 }
