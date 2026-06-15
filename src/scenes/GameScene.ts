@@ -38,6 +38,8 @@ export class GameScene extends Phaser.Scene {
   private score: number = 0;
   private eventBonusScore: number = 0;
   private eventSynthesisBonus: number = 0;
+  private eventRarePetalsGranted: number = 0;
+  private eventInitialized: boolean = false;
   private totalPetalsCollected: number = 0;
   private synthesisCount: number = 0;
   private startTime: number = 0;
@@ -110,7 +112,9 @@ export class GameScene extends Phaser.Scene {
     const initData = this.scene.settings.data as { loadSave?: boolean } | undefined;
     if (initData?.loadSave && this.saveManager.hasGameState()) {
       this.loadGameState();
+      this.applyEventBonuses(false);
     } else {
+      this.applyEventBonuses(true);
       this.spawnInitialPetals();
     }
 
@@ -123,6 +127,49 @@ export class GameScene extends Phaser.Scene {
     if (!validation.valid) {
       console.warn('[GameScene] 背包校验发现问题:', validation.issues);
       this.updateInventoryDisplay();
+    }
+  }
+
+  private applyEventBonuses(isNewGame: boolean): void {
+    if (!this.eventManager.isEventActive()) return;
+    if (this.eventInitialized) return;
+    this.eventInitialized = true;
+
+    const saveData = this.saveManager.getCurrentSave();
+
+    if (saveData.eventBonusScore > 0) {
+      this.score += saveData.eventBonusScore;
+      this.eventBonusScore = saveData.eventBonusScore;
+      this.updateScore();
+      console.log('[GameScene] 活动奖励分数已应用:', saveData.eventBonusScore, '当前总分:', this.score);
+    }
+
+    if (isNewGame && saveData.eventRarePetals > 0) {
+      this.eventRarePetalsGranted = saveData.eventRarePetals;
+      for (let i = 0; i < saveData.eventRarePetals; i++) {
+        this.synthesisSystem.addToInventory(2 as PetalTier, 'rainbow');
+      }
+      this.totalPetalsCollected += saveData.eventRarePetals;
+      this.rarePetalsCollected += saveData.eventRarePetals;
+      this.updateInventoryDisplay();
+      console.log('[GameScene] 活动稀有花瓣已加入背包:', saveData.eventRarePetals, '个彩虹L2花瓣');
+    }
+
+    if (saveData.eventSynthesisBonus > 0) {
+      this.eventSynthesisBonus = saveData.eventSynthesisBonus;
+      console.log('[GameScene] 活动合成加成已生效: x', saveData.eventSynthesisBonus);
+    }
+
+    if (saveData.eventBonusScore > 0 || saveData.eventRarePetals > 0 || saveData.eventSynthesisBonus > 0) {
+      this.time.delayedCall(1500, () => {
+        const msgs: string[] = [];
+        if (saveData.eventBonusScore > 0) msgs.push(`+${saveData.eventBonusScore}分`);
+        if (saveData.eventRarePetals > 0 && isNewGame) msgs.push(`💎×${saveData.eventRarePetals}`);
+        if (saveData.eventSynthesisBonus > 0) msgs.push(`⚡加成×${saveData.eventSynthesisBonus}`);
+        if (msgs.length > 0) {
+          this.showGuideText(`🎉 活动奖励已生效: ${msgs.join(' ')}`, 4000);
+        }
+      });
     }
   }
 
@@ -1044,9 +1091,16 @@ export class GameScene extends Phaser.Scene {
 
       let totalScore = 0;
       let totalProgress = 0;
+      let bonusScore = 0;
       result.outputs.forEach((output) => {
-        totalScore += output.tier * 100 * output.count;
-        totalProgress += output.tier * 4 * output.count;
+        const baseScore = output.tier * 100 * output.count;
+        const baseProgress = output.tier * 4 * output.count;
+        totalScore += baseScore;
+        totalProgress += baseProgress;
+        if (this.eventSynthesisBonus > 0) {
+          bonusScore += Math.floor(baseScore * 0.5 * this.eventSynthesisBonus);
+          totalProgress += Math.floor(baseProgress * 0.3 * this.eventSynthesisBonus);
+        }
         this.synthesisLog.push({
           tier: (output.tier - 1) as PetalTier,
           color: output.color,
@@ -1058,6 +1112,7 @@ export class GameScene extends Phaser.Scene {
           this.highestSynthesisTier = output.tier;
         }
       });
+      totalScore += bonusScore;
       this.score += totalScore;
       this.awakeProgress = Math.min(AWAKEN_GOAL, this.awakeProgress + totalProgress);
       this.updateScore();
@@ -1065,8 +1120,11 @@ export class GameScene extends Phaser.Scene {
       this.checkRegionUnlocks();
 
       if (totalScore > 0) {
+        const label = bonusScore > 0
+          ? `⭐ 合成·${color}·x${result.totalSynthesized} (活动+${bonusScore})`
+          : `⭐ 合成·${color}·x${result.totalSynthesized}`;
         this.rewardSources.push({
-          label: `⭐ 合成·${color}·x${result.totalSynthesized}`,
+          label,
           score: totalScore,
           color
         });
@@ -1161,9 +1219,16 @@ export class GameScene extends Phaser.Scene {
 
       let totalScore = 0;
       let totalProgress = 0;
+      let rainbowBonusScore = 0;
       result.outputs.forEach((output) => {
-        totalScore += output.tier * 100 * output.count;
-        totalProgress += output.tier * 4 * output.count;
+        const baseScore = output.tier * 100 * output.count;
+        const baseProgress = output.tier * 4 * output.count;
+        totalScore += baseScore;
+        totalProgress += baseProgress;
+        if (this.eventSynthesisBonus > 0) {
+          rainbowBonusScore += Math.floor(baseScore * 0.5 * this.eventSynthesisBonus);
+          totalProgress += Math.floor(baseProgress * 0.3 * this.eventSynthesisBonus);
+        }
         this.synthesisLog.push({
           tier: (output.tier - 1) as PetalTier,
           color: 'rainbow',
@@ -1175,6 +1240,7 @@ export class GameScene extends Phaser.Scene {
           this.highestSynthesisTier = output.tier;
         }
       });
+      totalScore += rainbowBonusScore;
       this.score += totalScore;
       this.awakeProgress = Math.min(AWAKEN_GOAL, this.awakeProgress + totalProgress);
       this.updateScore();
@@ -1182,8 +1248,11 @@ export class GameScene extends Phaser.Scene {
       this.checkRegionUnlocks();
 
       if (totalScore > 0) {
+        const label = rainbowBonusScore > 0
+          ? `🌈 彩虹合成·x${result.totalSynthesized} (活动+${rainbowBonusScore})`
+          : `🌈 彩虹合成·x${result.totalSynthesized}`;
         this.rewardSources.push({
-          label: `🌈 彩虹合成·x${result.totalSynthesized}`,
+          label,
           score: totalScore,
           color: 'rainbow'
         });
