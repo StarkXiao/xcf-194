@@ -2,12 +2,14 @@ import Phaser from 'phaser';
 import { SaveManager } from '../managers/SaveManager';
 import { AudioManager } from '../managers/AudioManager';
 import { EventManager } from '../managers/EventManager';
+import { GrowthTreeManager } from '../managers/GrowthTreeManager';
 import { GAME_WIDTH, GAME_HEIGHT } from '../types';
 
 export class MenuScene extends Phaser.Scene {
   private saveManager!: SaveManager;
   private audioManager!: AudioManager;
   private eventManager!: EventManager;
+  private growthManager!: GrowthTreeManager;
   private fireflies: Phaser.GameObjects.Graphics[] = [];
 
   constructor() {
@@ -18,6 +20,7 @@ export class MenuScene extends Phaser.Scene {
     this.saveManager = SaveManager.getInstance();
     this.audioManager = AudioManager.getInstance(this);
     this.eventManager = EventManager.getInstance();
+    this.growthManager = GrowthTreeManager.getInstance();
 
     this.createBackground();
     this.createFireflies();
@@ -25,6 +28,7 @@ export class MenuScene extends Phaser.Scene {
     this.createButtons();
     this.createBestRecord();
     this.createEventButton();
+    this.createGrowthTreeButton();
   }
 
   private createBackground(): void {
@@ -208,6 +212,86 @@ export class MenuScene extends Phaser.Scene {
       btnText.setScale(1);
       btnBg.setScale(1, 1);
       onClick();
+    });
+  }
+
+  private createGrowthTreeButton(): void {
+    this.saveManager.checkGrowthTreeUnlocks();
+
+    const hasNewUnlock = this.saveManager.hasNewGrowthUnlocks();
+    const saveData = this.saveManager.loadSave();
+    const totalUnlocked = saveData.growthTree.unlockedNodes.length;
+    const totalNodes = this.growthManager.getAllNodes().length;
+    const percent = Math.floor((totalUnlocked / totalNodes) * 100);
+
+    const btnX = GAME_WIDTH - 110;
+    const btnY = 150;
+
+    const btnBg = this.add.graphics();
+    btnBg.fillStyle(0x312e81, 0.9);
+    btnBg.fillRoundedRect(btnX - 90, btnY - 40, 180, 80, 16);
+    btnBg.lineStyle(2, hasNewUnlock ? 0xfbbf24 : 0x7c3aed, hasNewUnlock ? 1 : 0.6);
+    btnBg.strokeRoundedRect(btnX - 90, btnY - 40, 180, 80, 16);
+
+    const btnText = this.add.text(btnX, btnY - 10, '🌳 成长之树', {
+      fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+      fontSize: '20px',
+      color: hasNewUnlock ? '#fbbf24' : '#c4b5fd',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+
+    this.add.text(btnX, btnY + 18, `${totalUnlocked}/${totalNodes} · ${percent}%`, {
+      fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+      fontSize: '14px',
+      color: '#94a3b8'
+    }).setOrigin(0.5);
+
+    if (hasNewUnlock) {
+      const newBadge = this.add.graphics();
+      newBadge.fillStyle(0xef4444, 1);
+      newBadge.fillCircle(btnX + 70, btnY - 30, 12);
+
+      this.add.text(btnX + 70, btnY - 30, '!', {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '16px',
+        color: '#ffffff',
+        fontStyle: 'bold'
+      }).setOrigin(0.5);
+    }
+
+    btnBg.setInteractive(
+      new Phaser.Geom.Rectangle(btnX - 90, btnY - 40, 180, 80),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    btnBg.on('pointerover', () => {
+      btnBg.clear();
+      btnBg.fillStyle(0x4c1d95, 1);
+      btnBg.fillRoundedRect(btnX - 95, btnY - 45, 190, 90, 16);
+      btnBg.lineStyle(2, hasNewUnlock ? 0xfbbf24 : 0xfde68a, 1);
+      btnBg.strokeRoundedRect(btnX - 95, btnY - 45, 190, 90, 16);
+      btnText.setScale(1.05);
+    });
+
+    btnBg.on('pointerout', () => {
+      btnBg.clear();
+      btnBg.fillStyle(0x312e81, 0.9);
+      btnBg.fillRoundedRect(btnX - 90, btnY - 40, 180, 80, 16);
+      btnBg.lineStyle(2, hasNewUnlock ? 0xfbbf24 : 0x7c3aed, hasNewUnlock ? 1 : 0.6);
+      btnBg.strokeRoundedRect(btnX - 90, btnY - 40, 180, 80, 16);
+      btnText.setScale(1);
+    });
+
+    btnBg.on('pointerdown', () => {
+      this.audioManager.playClick();
+      btnText.setScale(0.95);
+      btnBg.setScale(0.97, 0.97);
+    });
+
+    btnBg.on('pointerup', () => {
+      btnText.setScale(1);
+      btnBg.setScale(1, 1);
+      this.scene.start('GrowthTreeScene');
     });
   }
 

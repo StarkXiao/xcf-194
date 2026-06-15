@@ -63,6 +63,7 @@ export interface SaveData {
   eventRarePetals: number;
   eventTitles: string[];
   eventSynthesisBonus: number;
+  growthTree: GrowthTreeSaveData;
 }
 
 export interface CollectionPathPoint {
@@ -151,7 +152,465 @@ export interface AudioCue {
   totalChain?: number;
 }
 
-export const SAVE_VERSION = '1.1.0';
+export const SAVE_VERSION = '1.3.0';
+
+export type GrowthNodeId =
+  | 'score_boost_1'
+  | 'score_boost_2'
+  | 'score_boost_3'
+  | 'score_boost_4'
+  | 'petal_boost_1'
+  | 'petal_boost_2'
+  | 'petal_boost_3'
+  | 'rare_boost_1'
+  | 'rare_boost_2'
+  | 'rare_boost_3'
+  | 'synthesis_boost_1'
+  | 'synthesis_boost_2'
+  | 'synthesis_boost_3'
+  | 'start_bonus_1'
+  | 'start_bonus_2'
+  | 'start_bonus_3'
+  | 'progress_boost_1'
+  | 'progress_boost_2'
+  | 'progress_boost_3'
+  | 'efficiency_boost'
+  | 'time_boost'
+  | 'collect_radius_boost'
+  | 'spawn_boost'
+  | 'master_collector'
+  | 'master_synthesizer'
+  | 'master_explorer';
+
+export type GrowthNodeRequirementType =
+  | 'gamesPlayed'
+  | 'totalPetalsCollected'
+  | 'totalSynthesisCount'
+  | 'totalRareCollected'
+  | 'bestScore'
+  | 'totalPlayTime'
+  | 'bestProgress';
+
+export type GrowthNodeRewardType =
+  | 'scoreMultiplier'
+  | 'petalValueBonus'
+  | 'rareChanceBonus'
+  | 'synthesisScoreBonus'
+  | 'startPetals'
+  | 'progressBonus'
+  | 'efficiencyBonus'
+  | 'autoFeedStart'
+  | 'collectRadiusBonus'
+  | 'spawnRateBonus'
+  | 'maxPetalsBonus';
+
+export interface GrowthNode {
+  id: GrowthNodeId;
+  name: string;
+  description: string;
+  icon: string;
+  requirementType: GrowthNodeRequirementType;
+  requirementValue: number;
+  rewardType: GrowthNodeRewardType;
+  rewardValue: number;
+  rewardDescription: string;
+  branch: 'collector' | 'synthesizer' | 'explorer';
+  tier: number;
+  prerequisites: GrowthNodeId[];
+}
+
+export interface GrowthTreeSaveData {
+  unlockedNodes: GrowthNodeId[];
+  newUnlockedNodes: GrowthNodeId[];
+  lastCheckedAt: number;
+}
+
+export interface PermanentBonuses {
+  scoreMultiplier: number;
+  petalValueBonus: number;
+  rareChanceBonus: number;
+  synthesisScoreBonus: number;
+  startPetals: number;
+  progressBonus: number;
+  efficiencyBonus: number;
+  autoFeedStartEnabled: boolean;
+  collectRadiusBonus: number;
+  spawnRateBonus: number;
+  maxPetalsBonus: number;
+}
+
+export const GROWTH_TREE_NODES: GrowthNode[] = [
+  {
+    id: 'score_boost_1',
+    name: '初心之光',
+    description: '完成3局游戏解锁',
+    icon: '✨',
+    requirementType: 'gamesPlayed',
+    requirementValue: 3,
+    rewardType: 'scoreMultiplier',
+    rewardValue: 0.05,
+    rewardDescription: '全局分数 +5%',
+    branch: 'collector',
+    tier: 1,
+    prerequisites: []
+  },
+  {
+    id: 'score_boost_2',
+    name: '星辉之力',
+    description: '累计收集200花瓣解锁',
+    icon: '🌟',
+    requirementType: 'totalPetalsCollected',
+    requirementValue: 200,
+    rewardType: 'scoreMultiplier',
+    rewardValue: 0.05,
+    rewardDescription: '全局分数再 +5%',
+    branch: 'collector',
+    tier: 2,
+    prerequisites: ['score_boost_1']
+  },
+  {
+    id: 'score_boost_3',
+    name: '月华祝福',
+    description: '累计收集500花瓣解锁',
+    icon: '🌙',
+    requirementType: 'totalPetalsCollected',
+    requirementValue: 500,
+    rewardType: 'scoreMultiplier',
+    rewardValue: 0.05,
+    rewardDescription: '全局分数再 +5%',
+    branch: 'collector',
+    tier: 3,
+    prerequisites: ['score_boost_2']
+  },
+  {
+    id: 'petal_boost_1',
+    name: '花瓣之契',
+    description: '累计收集100花瓣解锁',
+    icon: '🌸',
+    requirementType: 'totalPetalsCollected',
+    requirementValue: 100,
+    rewardType: 'petalValueBonus',
+    rewardValue: 5,
+    rewardDescription: '每朵花瓣基础分 +5',
+    branch: 'collector',
+    tier: 1,
+    prerequisites: []
+  },
+  {
+    id: 'petal_boost_2',
+    name: '繁花之约',
+    description: '累计收集300花瓣解锁',
+    icon: '💐',
+    requirementType: 'totalPetalsCollected',
+    requirementValue: 300,
+    rewardType: 'petalValueBonus',
+    rewardValue: 10,
+    rewardDescription: '每朵花瓣基础分再 +10',
+    branch: 'collector',
+    tier: 2,
+    prerequisites: ['petal_boost_1']
+  },
+  {
+    id: 'rare_boost_1',
+    name: '珍稀之眼',
+    description: '累计收集10稀有花瓣解锁',
+    icon: '💎',
+    requirementType: 'totalRareCollected',
+    requirementValue: 10,
+    rewardType: 'rareChanceBonus',
+    rewardValue: 0.03,
+    rewardDescription: '稀有花瓣出现率 +3%',
+    branch: 'collector',
+    tier: 2,
+    prerequisites: ['score_boost_1', 'petal_boost_1']
+  },
+  {
+    id: 'rare_boost_2',
+    name: '稀世之缘',
+    description: '累计收集30稀有花瓣解锁',
+    icon: '👑',
+    requirementType: 'totalRareCollected',
+    requirementValue: 30,
+    rewardType: 'rareChanceBonus',
+    rewardValue: 0.05,
+    rewardDescription: '稀有花瓣出现率再 +5%',
+    branch: 'collector',
+    tier: 3,
+    prerequisites: ['rare_boost_1']
+  },
+  {
+    id: 'synthesis_boost_1',
+    name: '合成初悟',
+    description: '累计合成50次解锁',
+    icon: '⚗️',
+    requirementType: 'totalSynthesisCount',
+    requirementValue: 50,
+    rewardType: 'synthesisScoreBonus',
+    rewardValue: 20,
+    rewardDescription: '每次合成额外 +20分',
+    branch: 'synthesizer',
+    tier: 1,
+    prerequisites: []
+  },
+  {
+    id: 'synthesis_boost_2',
+    name: '合成大师',
+    description: '累计合成150次解锁',
+    icon: '🔮',
+    requirementType: 'totalSynthesisCount',
+    requirementValue: 150,
+    rewardType: 'synthesisScoreBonus',
+    rewardValue: 30,
+    rewardDescription: '每次合成额外再 +30分',
+    branch: 'synthesizer',
+    tier: 2,
+    prerequisites: ['synthesis_boost_1']
+  },
+  {
+    id: 'efficiency_boost',
+    name: '效率之心',
+    description: '最佳效率达到80分解锁',
+    icon: '⚡',
+    requirementType: 'bestScore',
+    requirementValue: 3000,
+    rewardType: 'efficiencyBonus',
+    rewardValue: 0.1,
+    rewardDescription: '分数加成 +10%',
+    branch: 'synthesizer',
+    tier: 2,
+    prerequisites: ['synthesis_boost_1']
+  },
+  {
+    id: 'start_bonus_1',
+    name: '启程之礼',
+    description: '完成5局游戏解锁',
+    icon: '🎁',
+    requirementType: 'gamesPlayed',
+    requirementValue: 5,
+    rewardType: 'startPetals',
+    rewardValue: 3,
+    rewardDescription: '每局开始赠送3个随机花瓣',
+    branch: 'explorer',
+    tier: 1,
+    prerequisites: []
+  },
+  {
+    id: 'start_bonus_2',
+    name: '丰盛启程',
+    description: '完成10局游戏解锁',
+    icon: '🎊',
+    requirementType: 'gamesPlayed',
+    requirementValue: 10,
+    rewardType: 'startPetals',
+    rewardValue: 5,
+    rewardDescription: '每局开始再赠送2个花瓣',
+    branch: 'explorer',
+    tier: 2,
+    prerequisites: ['start_bonus_1']
+  },
+  {
+    id: 'progress_boost_1',
+    name: '唤醒之助',
+    description: '最佳进度达到50%解锁',
+    icon: '💖',
+    requirementType: 'bestProgress',
+    requirementValue: 50,
+    rewardType: 'progressBonus',
+    rewardValue: 0.1,
+    rewardDescription: '唤醒进度 +10%',
+    branch: 'explorer',
+    tier: 1,
+    prerequisites: []
+  },
+  {
+    id: 'progress_boost_2',
+    name: '深情呼唤',
+    description: '最佳进度达到80%解锁',
+    icon: '💗',
+    requirementType: 'bestProgress',
+    requirementValue: 80,
+    rewardType: 'progressBonus',
+    rewardValue: 0.1,
+    rewardDescription: '唤醒进度再 +10%',
+    branch: 'explorer',
+    tier: 2,
+    prerequisites: ['progress_boost_1']
+  },
+  {
+    id: 'time_boost',
+    name: '时光之契',
+    description: '累计游玩60分钟解锁',
+    icon: '⏰',
+    requirementType: 'totalPlayTime',
+    requirementValue: 3600,
+    rewardType: 'autoFeedStart',
+    rewardValue: 1,
+    rewardDescription: '每局自动开启自动补料',
+    branch: 'explorer',
+    tier: 2,
+    prerequisites: ['start_bonus_1', 'progress_boost_1']
+  },
+  {
+    id: 'score_boost_4',
+    name: '永恒辉光',
+    description: '累计收集1000花瓣解锁',
+    icon: '💫',
+    requirementType: 'totalPetalsCollected',
+    requirementValue: 1000,
+    rewardType: 'scoreMultiplier',
+    rewardValue: 0.05,
+    rewardDescription: '全局分数再 +5%',
+    branch: 'collector',
+    tier: 4,
+    prerequisites: ['score_boost_3', 'rare_boost_2']
+  },
+  {
+    id: 'petal_boost_3',
+    name: '花神恩赐',
+    description: '累计收集600花瓣解锁',
+    icon: '🌺',
+    requirementType: 'totalPetalsCollected',
+    requirementValue: 600,
+    rewardType: 'petalValueBonus',
+    rewardValue: 15,
+    rewardDescription: '每朵花瓣基础分再 +15',
+    branch: 'collector',
+    tier: 3,
+    prerequisites: ['petal_boost_2', 'rare_boost_1']
+  },
+  {
+    id: 'rare_boost_3',
+    name: '传说之缘',
+    description: '累计收集60稀有花瓣解锁',
+    icon: '👑',
+    requirementType: 'totalRareCollected',
+    requirementValue: 60,
+    rewardType: 'rareChanceBonus',
+    rewardValue: 0.07,
+    rewardDescription: '稀有花瓣出现率再 +7%',
+    branch: 'collector',
+    tier: 4,
+    prerequisites: ['rare_boost_2', 'score_boost_3']
+  },
+  {
+    id: 'synthesis_boost_3',
+    name: '合成宗师',
+    description: '累计合成300次解锁',
+    icon: '🔮',
+    requirementType: 'totalSynthesisCount',
+    requirementValue: 300,
+    rewardType: 'synthesisScoreBonus',
+    rewardValue: 50,
+    rewardDescription: '每次合成额外再 +50分',
+    branch: 'synthesizer',
+    tier: 3,
+    prerequisites: ['synthesis_boost_2', 'efficiency_boost']
+  },
+  {
+    id: 'start_bonus_3',
+    name: '豪华盛宴',
+    description: '完成20局游戏解锁',
+    icon: '🎉',
+    requirementType: 'gamesPlayed',
+    requirementValue: 20,
+    rewardType: 'startPetals',
+    rewardValue: 5,
+    rewardDescription: '每局开始再赠送5个花瓣',
+    branch: 'explorer',
+    tier: 3,
+    prerequisites: ['start_bonus_2', 'time_boost']
+  },
+  {
+    id: 'progress_boost_3',
+    name: '灵魂共鸣',
+    description: '最佳进度达到100%解锁',
+    icon: '💞',
+    requirementType: 'bestProgress',
+    requirementValue: 100,
+    rewardType: 'progressBonus',
+    rewardValue: 0.1,
+    rewardDescription: '唤醒进度再 +10%',
+    branch: 'explorer',
+    tier: 3,
+    prerequisites: ['progress_boost_2', 'time_boost']
+  },
+  {
+    id: 'collect_radius_boost',
+    name: '心灵感应',
+    description: '累计收集400花瓣解锁',
+    icon: '🧲',
+    requirementType: 'totalPetalsCollected',
+    requirementValue: 400,
+    rewardType: 'collectRadiusBonus',
+    rewardValue: 20,
+    rewardDescription: '花瓣采集范围 +20',
+    branch: 'collector',
+    tier: 3,
+    prerequisites: ['petal_boost_2', 'score_boost_2']
+  },
+  {
+    id: 'spawn_boost',
+    name: '花之律动',
+    description: '累计游玩120分钟解锁',
+    icon: '🌱',
+    requirementType: 'totalPlayTime',
+    requirementValue: 7200,
+    rewardType: 'spawnRateBonus',
+    rewardValue: 0.15,
+    rewardDescription: '花瓣生成速度 +15%',
+    branch: 'explorer',
+    tier: 3,
+    prerequisites: ['start_bonus_2', 'progress_boost_2']
+  },
+  {
+    id: 'master_collector',
+    name: '采集大师',
+    description: '累计收集1500花瓣解锁',
+    icon: '🏆',
+    requirementType: 'totalPetalsCollected',
+    requirementValue: 1500,
+    rewardType: 'scoreMultiplier',
+    rewardValue: 0.1,
+    rewardDescription: '全局分数 +10% (采集大师)',
+    branch: 'collector',
+    tier: 5,
+    prerequisites: ['score_boost_4', 'petal_boost_3', 'rare_boost_3']
+  },
+  {
+    id: 'master_synthesizer',
+    name: '合成大师',
+    description: '累计合成500次解锁',
+    icon: '🏅',
+    requirementType: 'totalSynthesisCount',
+    requirementValue: 500,
+    rewardType: 'synthesisScoreBonus',
+    rewardValue: 80,
+    rewardDescription: '每次合成额外 +80分 (合成大师)',
+    branch: 'synthesizer',
+    tier: 5,
+    prerequisites: ['synthesis_boost_3', 'efficiency_boost']
+  },
+  {
+    id: 'master_explorer',
+    name: '探索大师',
+    description: '完成30局游戏解锁',
+    icon: '🗺️',
+    requirementType: 'gamesPlayed',
+    requirementValue: 30,
+    rewardType: 'maxPetalsBonus',
+    rewardValue: 5,
+    rewardDescription: '场上最大花瓣数 +5 (探索大师)',
+    branch: 'explorer',
+    tier: 5,
+    prerequisites: ['start_bonus_3', 'progress_boost_3', 'spawn_boost']
+  }
+];
+
+export const GROWTH_BRANCH_INFO: Record<'collector' | 'synthesizer' | 'explorer', { name: string; icon: string; color: string }> = {
+  collector: { name: '采集之路', icon: '🌸', color: '#f472b6' },
+  synthesizer: { name: '合成之道', icon: '⚗️', color: '#a78bfa' },
+  explorer: { name: '探索之径', icon: '🗺️', color: '#60a5fa' }
+};
 
 export const DEFAULT_ANIMATION_TIMING: AnimationTiming = {
   synthesisDelay: 250,

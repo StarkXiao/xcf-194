@@ -1,4 +1,5 @@
-import { SaveData, GameSaveData, GameState, SAVE_VERSION, Petal, InventoryItem, ReplayData } from '../types';
+import { SaveData, GameSaveData, GameState, SAVE_VERSION, Petal, InventoryItem, ReplayData, GrowthTreeSaveData, GrowthNode } from '../types';
+import { GrowthTreeManager } from './GrowthTreeManager';
 
 const SAVE_KEY = 'dream_forest_save_v1';
 const GAME_STATE_KEY = 'dream_forest_game_state_v1';
@@ -35,7 +36,21 @@ export class SaveManager {
     return 0;
   }
 
+  private getDefaultGrowthTree(data: any): GrowthTreeSaveData {
+    const growthManager = GrowthTreeManager.getInstance();
+    if (data.growthTree && data.growthTree.unlockedNodes) {
+      return {
+        unlockedNodes: data.growthTree.unlockedNodes ?? [],
+        newUnlockedNodes: data.growthTree.newUnlockedNodes ?? [],
+        lastCheckedAt: data.growthTree.lastCheckedAt ?? 0
+      };
+    }
+    return growthManager.getDefaultGrowthTree();
+  }
+
   private migrateSaveData(data: any, version: string): SaveData {
+    const growthTree = this.getDefaultGrowthTree(data);
+
     const result: SaveData = {
       bestScore: data.bestScore ?? 0,
       bestProgress: data.bestProgress ?? 0,
@@ -50,11 +65,24 @@ export class SaveManager {
       eventBonusScore: data.eventBonusScore ?? 0,
       eventRarePetals: data.eventRarePetals ?? 0,
       eventTitles: data.eventTitles ?? [],
-      eventSynthesisBonus: data.eventSynthesisBonus ?? 0
+      eventSynthesisBonus: data.eventSynthesisBonus ?? 0,
+      growthTree
     };
 
     if (this.compareVersions(version, '1.1.0') < 0) {
       console.log('[SaveManager] 存档数据从版本', version, '迁移到', this.currentVersion);
+    }
+
+    if (this.compareVersions(version, '1.2.0') < 0) {
+      console.log('[SaveManager] 存档已升级到 1.2.0，成长树系统已初始化');
+      const growthManager = GrowthTreeManager.getInstance();
+      growthManager.checkAndUnlockNodes(result);
+    }
+
+    if (this.compareVersions(version, '1.3.0') < 0) {
+      console.log('[SaveManager] 存档已升级到 1.3.0，成长树扩展已启用');
+      const growthManager = GrowthTreeManager.getInstance();
+      growthManager.checkAndUnlockNodes(result);
     }
 
     return result;
@@ -71,6 +99,7 @@ export class SaveManager {
     } catch (e) {
       console.warn('[SaveManager] 读取存档失败，使用默认存档', e);
     }
+    const growthManager = GrowthTreeManager.getInstance();
     return {
       bestScore: 0,
       bestProgress: 0,
@@ -85,7 +114,8 @@ export class SaveManager {
       eventBonusScore: 0,
       eventRarePetals: 0,
       eventTitles: [],
-      eventSynthesisBonus: 0
+      eventSynthesisBonus: 0,
+      growthTree: growthManager.getDefaultGrowthTree()
     };
   }
 
@@ -98,8 +128,9 @@ export class SaveManager {
     synthesisCount?: number;
     rareCollected?: number;
     efficiencyScore?: number;
-  }): void {
-    const newBest = {
+  }): GrowthNode[] {
+    const growthManager = GrowthTreeManager.getInstance();
+    const newBest: SaveData = {
       bestScore: Math.max(this.saveData.bestScore, result.score),
       bestProgress: Math.max(this.saveData.bestProgress, Math.floor(result.progress)),
       totalPlayTime: this.saveData.totalPlayTime + result.playTime,
@@ -113,9 +144,15 @@ export class SaveManager {
       eventBonusScore: this.saveData.eventBonusScore,
       eventRarePetals: this.saveData.eventRarePetals,
       eventTitles: [...this.saveData.eventTitles],
-      eventSynthesisBonus: this.saveData.eventSynthesisBonus
+      eventSynthesisBonus: this.saveData.eventSynthesisBonus,
+      growthTree: {
+        unlockedNodes: [...this.saveData.growthTree.unlockedNodes],
+        newUnlockedNodes: [...this.saveData.growthTree.newUnlockedNodes],
+        lastCheckedAt: this.saveData.growthTree.lastCheckedAt
+      }
     };
 
+    const newlyUnlocked = growthManager.checkAndUnlockNodes(newBest);
     this.saveData = newBest;
 
     try {
@@ -123,9 +160,12 @@ export class SaveManager {
     } catch (e) {
       console.warn('[SaveManager] 保存存档失败', e);
     }
+
+    return newlyUnlocked;
   }
 
   resetSave(): void {
+    const growthManager = GrowthTreeManager.getInstance();
     this.saveData = {
       bestScore: 0,
       bestProgress: 0,
@@ -140,7 +180,8 @@ export class SaveManager {
       eventBonusScore: 0,
       eventRarePetals: 0,
       eventTitles: [],
-      eventSynthesisBonus: 0
+      eventSynthesisBonus: 0,
+      growthTree: growthManager.getDefaultGrowthTree()
     };
     try {
       localStorage.removeItem(SAVE_KEY);
@@ -150,7 +191,44 @@ export class SaveManager {
   }
 
   getCurrentSave(): SaveData {
-    return { ...this.saveData };
+    return {
+      ...this.saveData,
+      growthTree: {
+        unlockedNodes: [...this.saveData.growthTree.unlockedNodes],
+        newUnlockedNodes: [...this.saveData.growthTree.newUnlockedNodes],
+        lastCheckedAt: this.saveData.growthTree.lastCheckedAt
+      }
+    };
+  }
+
+  getPermanentBonuses(): import('../types').PermanentBonuses {
+    const growthManager = GrowthTreeManager.getInstance();
+    return growthManager.calculatePermanentBonuses(this.saveData);
+  }
+
+  checkGrowthTreeUnlocks(): GrowthNode[] {
+    const growthManager = GrowthTreeManager.getInstance();
+    const newlyUnlocked = growthManager.checkAndUnlockNodes(this.saveData);
+    if (newlyUnlocked.length > 0) {
+      this.persistSave();
+    }
+    return newlyUnlocked;
+  }
+
+  hasNewGrowthUnlocks(): boolean {
+    const growthManager = GrowthTreeManager.getInstance();
+    return growthManager.hasNewUnlocked(this.saveData);
+  }
+
+  getNewGrowthUnlocks(): GrowthNode[] {
+    const growthManager = GrowthTreeManager.getInstance();
+    return growthManager.getNewUnlockedNodes(this.saveData);
+  }
+
+  clearGrowthNewUnlocks(): void {
+    const growthManager = GrowthTreeManager.getInstance();
+    growthManager.clearNewUnlocked(this.saveData);
+    this.persistSave();
   }
 
   addEventBonusScore(score: number): void {

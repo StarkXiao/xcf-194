@@ -26,7 +26,8 @@ import {
   CollectionPathPoint,
   SynthesisLogEntry,
   RewardSource,
-  ReplayData
+  ReplayData,
+  PermanentBonuses
 } from '../types';
 
 export class GameScene extends Phaser.Scene {
@@ -93,6 +94,7 @@ export class GameScene extends Phaser.Scene {
   private petalsByRegion: Map<RegionId, number> = new Map();
   private pathTrackingTimer!: Phaser.Time.TimerEvent;
   private highestSynthesisTier: PetalTier = 1;
+  private permanentBonuses!: PermanentBonuses;
 
   constructor() {
     super('GameScene');
@@ -106,6 +108,8 @@ export class GameScene extends Phaser.Scene {
     this.synthesisSystem = new SynthesisSystem();
     this.playerController = new PlayerController(this);
     this.startTime = Date.now();
+
+    this.permanentBonuses = this.saveManager.getPermanentBonuses();
 
     if (this.eventManager.isEventActive()) {
       this.eventBonusScore = this.saveManager.getCurrentSave().eventBonusScore;
@@ -130,6 +134,7 @@ export class GameScene extends Phaser.Scene {
       this.loadGameState();
       this.applyEventBonuses(false);
     } else {
+      this.applyPermanentStartBonuses();
       this.applyEventBonuses(true);
       this.spawnInitialPetals();
     }
@@ -210,6 +215,48 @@ export class GameScene extends Phaser.Scene {
         if (msgs.length > 0) {
           this.showGuideText(`${prefix} ${msgs.join(' ')}`, 4000);
         }
+      });
+    }
+  }
+
+  private applyPermanentStartBonuses(): void {
+    const bonuses = this.permanentBonuses;
+
+    if (bonuses.startPetals > 0) {
+      const colors: PetalColor[] = ['pink', 'blue', 'purple'];
+      for (let i = 0; i < bonuses.startPetals; i++) {
+        const color = colors[Phaser.Math.Between(0, colors.length - 1)];
+        this.synthesisSystem.addToInventory(1, color);
+        this.totalPetalsCollected++;
+      }
+      console.log('[GameScene] 永久增益·起始花瓣已赠送:', bonuses.startPetals, '个');
+    }
+
+    if (bonuses.autoFeedStartEnabled) {
+      this.synthesisSystem.setAutoFeedEnabled(true);
+      console.log('[GameScene] 永久增益·自动补料已自动开启');
+    }
+
+    if (bonuses.progressBonus > 0) {
+      const bonusProgress = AWAKEN_GOAL * bonuses.progressBonus;
+      this.awakeProgress = Math.min(AWAKEN_GOAL, this.awakeProgress + bonusProgress);
+      console.log('[GameScene] 永久增益·唤醒进度加成已应用: +', bonusProgress.toFixed(1), '%');
+    }
+
+    const bonusMsgs: string[] = [];
+    if (bonuses.startPetals > 0) bonusMsgs.push(`🌸×${bonuses.startPetals}`);
+    if (bonuses.autoFeedStartEnabled) bonusMsgs.push('⚡自动补料');
+    if (bonuses.progressBonus > 0) bonusMsgs.push(`💖+${Math.floor(bonuses.progressBonus * 100)}%`);
+    if (bonuses.scoreMultiplier > 1) bonusMsgs.push(`✨×${bonuses.scoreMultiplier.toFixed(2)}`);
+    if (bonuses.petalValueBonus > 0) bonusMsgs.push(`💎+${bonuses.petalValueBonus}分`);
+    if (bonuses.rareChanceBonus > 0) bonusMsgs.push(`🌟稀有+${Math.floor(bonuses.rareChanceBonus * 100)}%`);
+    if (bonuses.collectRadiusBonus > 0) bonusMsgs.push(`🧲范围+${bonuses.collectRadiusBonus}`);
+    if (bonuses.spawnRateBonus > 0) bonusMsgs.push(`🌱生成+${Math.floor(bonuses.spawnRateBonus * 100)}%`);
+    if (bonuses.maxPetalsBonus > 0) bonusMsgs.push(`🌺上限+${bonuses.maxPetalsBonus}`);
+
+    if (bonusMsgs.length > 0) {
+      this.time.delayedCall(2500, () => {
+        this.showGuideText(`🌳 成长祝福: ${bonusMsgs.join(' ')}`, 6000);
       });
     }
   }
@@ -1087,6 +1134,10 @@ export class GameScene extends Phaser.Scene {
         }
       });
 
+      totalScore += this.permanentBonuses.synthesisScoreBonus * successCount;
+      totalScore = Math.floor(totalScore * this.permanentBonuses.scoreMultiplier);
+      totalProgress = Math.floor(totalProgress * (1 + this.permanentBonuses.progressBonus));
+
       this.score += totalScore;
       this.awakeProgress = Math.min(AWAKEN_GOAL, this.awakeProgress + totalProgress);
       this.updateScore();
@@ -1289,11 +1340,15 @@ export class GameScene extends Phaser.Scene {
   }
 
   private startPetalSpawner(): void {
+    const baseDelay = 1500;
+    const adjustedDelay = Math.max(500, baseDelay * (1 - this.permanentBonuses.spawnRateBonus));
+    const maxPetals = 15 + this.permanentBonuses.maxPetalsBonus;
+
     this.spawnTimer = this.time.addEvent({
-      delay: 1500,
+      delay: adjustedDelay,
       loop: true,
       callback: () => {
-        if (this.petals.length < 15 && !this.isCompleted) {
+        if (this.petals.length < maxPetals && !this.isCompleted) {
           this.spawnPetal();
         }
       }
@@ -1309,8 +1364,10 @@ export class GameScene extends Phaser.Scene {
 
     let tier: PetalTier = 1;
     let color: PetalColor;
+    const rareChanceBonus = this.permanentBonuses.rareChanceBonus;
+    const adjustedRareChance = Math.min(0.5, rule.rareChance + rareChanceBonus);
 
-    if (rule.rareChance > 0 && rule.rareColor && rule.rareTier && Math.random() < rule.rareChance) {
+    if (rule.rareChance > 0 && rule.rareColor && rule.rareTier && Math.random() < adjustedRareChance) {
       tier = rule.rareTier;
       color = rule.rareColor;
     } else {
@@ -1427,7 +1484,7 @@ export class GameScene extends Phaser.Scene {
 
   private checkPetalCollection(): void {
     const playerPos = this.playerController.getPosition();
-    const collectRadius = 70;
+    const collectRadius = 70 + this.permanentBonuses.collectRadiusBonus;
 
     for (let i = this.petals.length - 1; i >= 0; i--) {
       const petal = this.petals[i];
@@ -1473,7 +1530,9 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    const scoreGain = data.tier * 15 + (data.color === 'gold' ? 30 : 0) + (isRare ? 50 : 0);
+    const baseScoreGain = data.tier * 15 + (data.color === 'gold' ? 30 : 0) + (isRare ? 50 : 0);
+    let scoreGain = baseScoreGain + this.permanentBonuses.petalValueBonus;
+    scoreGain = Math.floor(scoreGain * this.permanentBonuses.scoreMultiplier);
     this.score += scoreGain;
     this.updateScore();
 
@@ -1561,7 +1620,9 @@ export class GameScene extends Phaser.Scene {
           this.highestSynthesisTier = output.tier;
         }
       });
-      totalScore += bonusScore;
+      totalScore += this.permanentBonuses.synthesisScoreBonus * result.totalSynthesized;
+      totalScore = Math.floor(totalScore * this.permanentBonuses.scoreMultiplier) + bonusScore;
+      totalProgress = Math.floor(totalProgress * (1 + this.permanentBonuses.progressBonus));
       this.score += totalScore;
       this.awakeProgress = Math.min(AWAKEN_GOAL, this.awakeProgress + totalProgress);
       this.updateScore();
@@ -1689,7 +1750,9 @@ export class GameScene extends Phaser.Scene {
           this.highestSynthesisTier = output.tier;
         }
       });
-      totalScore += rainbowBonusScore;
+      totalScore += this.permanentBonuses.synthesisScoreBonus * result.totalSynthesized;
+      totalScore = Math.floor(totalScore * this.permanentBonuses.scoreMultiplier) + rainbowBonusScore;
+      totalProgress = Math.floor(totalProgress * (1 + this.permanentBonuses.progressBonus));
       this.score += totalScore;
       this.awakeProgress = Math.min(AWAKEN_GOAL, this.awakeProgress + totalProgress);
       this.updateScore();
@@ -1900,7 +1963,7 @@ export class GameScene extends Phaser.Scene {
       collectionRate
     };
 
-    this.saveManager.saveProgress({
+    const newlyUnlocked = this.saveManager.saveProgress({
       score: this.score,
       progress: this.awakeProgress,
       playTime,
@@ -1946,7 +2009,8 @@ export class GameScene extends Phaser.Scene {
       unlockedRegions: [...this.unlockedRegions],
       rarePetalsCollected: this.rarePetalsCollected,
       replayData,
-      eventData
+      eventData,
+      newlyUnlockedGrowth: newlyUnlocked
     });
   }
 

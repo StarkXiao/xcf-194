@@ -11,8 +11,10 @@ import {
   ReplayData,
   PetalColor,
   PETAL_COLOR_MAP,
-  PETAL_TIER_NAMES
+  PETAL_TIER_NAMES,
+  GrowthNode
 } from '../types';
+import { GrowthTreeManager } from '../managers/GrowthTreeManager';
 
 interface ResultData {
   score: number;
@@ -24,6 +26,8 @@ interface ResultData {
   unlockedRegions: RegionId[];
   rarePetalsCollected: number;
   replayData?: ReplayData;
+  eventData?: any;
+  newlyUnlockedGrowth?: GrowthNode[];
 }
 
 const COLOR_HEX: Record<PetalColor, number> = {
@@ -126,6 +130,7 @@ export class ResultScene extends Phaser.Scene {
     y = this.createRewardSourceSection(y);
     y = this.createRegionSection(y);
     y = this.createEventProgressSection(y);
+    y = this.createGrowthTreeSection(y);
     y = this.createSaveStatsSection(y);
 
     this.contentHeight = y + 40;
@@ -877,6 +882,127 @@ export class ResultScene extends Phaser.Scene {
         btnText.setScale(1);
         this.audioManager.playClick();
         this.scene.start('EventScene');
+      });
+    }
+
+    return y + panelH + 15;
+  }
+
+  private createGrowthTreeSection(startY: number): number {
+    const y = startY;
+    const panelX = GAME_WIDTH / 2 - 320;
+    const panelW = 640;
+
+    const growthManager = GrowthTreeManager.getInstance();
+    const saveData = this.saveManager.loadSave();
+    const newlyUnlocked = this.resultData.newlyUnlockedGrowth || [];
+    const bonuses = growthManager.calculatePermanentBonuses(saveData);
+    const totalUnlocked = saveData.growthTree.unlockedNodes.length;
+    const totalNodes = growthManager.getAllNodes().length;
+
+    let panelH = 160;
+    if (newlyUnlocked.length > 0) {
+      panelH += 60 + newlyUnlocked.length * 60;
+    }
+
+    const panel = this.add.graphics();
+    panel.fillStyle(0x1e1b4b, 0.92);
+    panel.fillRoundedRect(panelX, y, panelW, panelH, 20);
+    panel.lineStyle(2, 0xfbbf24, 0.5);
+    panel.strokeRoundedRect(panelX, y, panelW, panelH, 20);
+    this.scrollContainer.add(panel);
+
+    this.scrollContainer.add(
+      this.add.text(GAME_WIDTH / 2, y + 30, '🌳 成长之树', {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '24px',
+        color: '#fde68a',
+        fontStyle: 'bold'
+      }).setOrigin(0.5)
+    );
+
+    this.scrollContainer.add(
+      this.add.text(panelX + 50, y + 65, `解锁进度`, {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '16px',
+        color: '#94a3b8'
+      }).setOrigin(0, 0.5)
+    );
+    this.scrollContainer.add(
+      this.add.text(panelX + panelW - 50, y + 65, `${totalUnlocked}/${totalNodes}`, {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '18px',
+        color: '#fbbf24',
+        fontStyle: 'bold'
+      }).setOrigin(1, 0.5)
+    );
+
+    const bonusTexts: string[] = [];
+    if (bonuses.scoreMultiplier > 1) bonusTexts.push(`✨×${bonuses.scoreMultiplier.toFixed(2)}`);
+    if (bonuses.petalValueBonus > 0) bonusTexts.push(`🌸+${bonuses.petalValueBonus}`);
+    if (bonuses.rareChanceBonus > 0) bonusTexts.push(`💎+${Math.floor(bonuses.rareChanceBonus * 100)}%`);
+    if (bonuses.synthesisScoreBonus > 0) bonusTexts.push(`⚗️+${bonuses.synthesisScoreBonus}`);
+    if (bonuses.startPetals > 0) bonusTexts.push(`🎁×${bonuses.startPetals}`);
+    if (bonuses.progressBonus > 0) bonusTexts.push(`💖+${Math.floor(bonuses.progressBonus * 100)}%`);
+    if (bonuses.collectRadiusBonus > 0) bonusTexts.push(`🧲+${bonuses.collectRadiusBonus}`);
+    if (bonuses.spawnRateBonus > 0) bonusTexts.push(`🌱+${Math.floor(bonuses.spawnRateBonus * 100)}%`);
+    if (bonuses.maxPetalsBonus > 0) bonusTexts.push(`🌺+${bonuses.maxPetalsBonus}`);
+    if (bonuses.autoFeedStartEnabled) bonusTexts.push(`⚡自动`);
+
+    this.scrollContainer.add(
+      this.add.text(GAME_WIDTH / 2, y + 100, bonusTexts.length > 0 ? bonusTexts.join('  ') : '暂无增益', {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '16px',
+        color: '#c4b5fd'
+      }).setOrigin(0.5)
+    );
+
+    this.scrollContainer.add(
+      this.add.text(GAME_WIDTH / 2, y + 130, '主菜单 → 成长之树 查看详情', {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '14px',
+        color: '#64748b'
+      }).setOrigin(0.5)
+    );
+
+    let currentY = y + 170;
+
+    if (newlyUnlocked.length > 0) {
+      this.scrollContainer.add(
+        this.add.text(panelX + 50, currentY, '🎉 新解锁成长节点', {
+          fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+          fontSize: '18px',
+          color: '#fbbf24',
+          fontStyle: 'bold'
+        }).setOrigin(0, 0.5)
+      );
+      currentY += 35;
+
+      newlyUnlocked.forEach((node, i) => {
+        const nodeBg = this.add.graphics();
+        nodeBg.fillStyle(0x312e81, 0.8);
+        nodeBg.fillRoundedRect(panelX + 50, currentY, panelW - 100, 50, 12);
+        nodeBg.lineStyle(2, 0xfbbf24, 0.6);
+        nodeBg.strokeRoundedRect(panelX + 50, currentY, panelW - 100, 50, 12);
+        this.scrollContainer.add(nodeBg);
+
+        this.scrollContainer.add(
+          this.add.text(panelX + 75, currentY + 25, `${node.icon} ${node.name}`, {
+            fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+            fontSize: '18px',
+            color: '#fde68a',
+            fontStyle: 'bold'
+          }).setOrigin(0, 0.5)
+        );
+        this.scrollContainer.add(
+          this.add.text(panelX + panelW - 70, currentY + 25, node.rewardDescription, {
+            fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+            fontSize: '16px',
+            color: '#86efac'
+          }).setOrigin(1, 0.5)
+        );
+
+        currentY += 60;
       });
     }
 
