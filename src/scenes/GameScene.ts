@@ -1475,37 +1475,126 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private playerPhysicsBody: Phaser.Physics.Arcade.Body | null = null;
+  private lastSprintState: boolean = false;
+
   private setupCollisions(): void {
+    const playerContainer = (this.playerController as any).container as Phaser.GameObjects.Container;
+    if (playerContainer && this.physics.world) {
+      this.physics.add.existing(playerContainer);
+      this.playerPhysicsBody = playerContainer.body as Phaser.Physics.Arcade.Body;
+      if (this.playerPhysicsBody) {
+        this.playerPhysicsBody.setCircle(25, -25, -25);
+        this.playerPhysicsBody.setAllowGravity(false);
+        this.playerPhysicsBody.setImmovable(true);
+        this.playerPhysicsBody.enable = true;
+      }
+    }
+
     this.physics.world.on('worldstep', () => {
       if (this.isCompleted) return;
       this.checkPetalCollection();
+      this.syncPlayerCollisionBody();
     });
+  }
+
+  private syncPlayerCollisionBody(): void {
+    if (!this.playerPhysicsBody) return;
+
+    const currentSprintState = this.playerController.isSprinting();
+    if (currentSprintState !== this.lastSprintState) {
+      const radius = this.playerController.getSprintCollisionRadius();
+      this.playerPhysicsBody.setCircle(radius, -radius, -radius);
+      this.lastSprintState = currentSprintState;
+    }
+
+    const pos = this.playerController.getPosition();
+    this.playerPhysicsBody.position.x = pos.x - this.playerPhysicsBody.halfWidth;
+    this.playerPhysicsBody.position.y = pos.y - this.playerPhysicsBody.halfHeight;
+    this.playerPhysicsBody.updateCenter();
   }
 
   private checkPetalCollection(): void {
     const playerPos = this.playerController.getPosition();
-    const collectRadius = 70 + this.permanentBonuses.collectRadiusBonus;
+    const baseCollectRadius = 70 + this.permanentBonuses.collectRadiusBonus;
+    this.playerController.setCollectRadius(baseCollectRadius);
+
+    const absorbRange = this.playerController.getAbsorbRange();
+    const absorbStrength = this.playerController.getAbsorbStrength();
+
+    const playerRadius = this.playerController.getSprintCollisionRadius();
+
+    let nearbyCount = 0;
+    const absorbStartRadius = baseCollectRadius * 1.2;
 
     for (let i = this.petals.length - 1; i >= 0; i--) {
       const petal = this.petals[i];
       const data = this.petalData.get(petal);
       if (!data || data.collected) continue;
 
-      const dist = Phaser.Math.Distance.Between(playerPos.x, playerPos.y, petal.x, petal.y);
+      const dx = playerPos.x - petal.x;
+      const dy = playerPos.y - petal.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
 
-      if (dist < collectRadius) {
-        this.collectPetal(petal);
+      if (dist < absorbStartRadius) {
+        nearbyCount++;
       }
+
+      if (dist < absorbRange && dist > baseCollectRadius) {
+        const absorbFactor = Math.max(0, 1 - (dist - baseCollectRadius) / (absorbRange - baseCollectRadius));
+        const pullStrength = absorbFactor * absorbStrength * 4.5;
+        const nx = dx / (dist || 1);
+        const ny = dy / (dist || 1);
+
+        petal.x += nx * pullStrength;
+        petal.y += ny * pullStrength;
+
+        const isAbsorbing = petal.getData('isAbsorbing');
+        if (!isAbsorbing) {
+          petal.setData('isAbsorbing', true);
+          petal.setData('absorbStartScale', petal.scaleX || 1);
+          this.animationManager.playAbsorbStartEffect(petal.x, petal.y, data.color);
+        }
+
+        const scalePulse = 1 + Math.sin(Date.now() / 100 + i) * 0.08;
+        petal.setScale((petal.getData('absorbStartScale') || 1) * scalePulse * (1 + absorbFactor * 0.15));
+      } else if (dist >= absorbRange) {
+        if (petal.getData('isAbsorbing')) {
+          petal.setData('isAbsorbing', false);
+          const baseScale = petal.getData('absorbStartScale') || 1;
+          this.tweens.add({
+            targets: petal,
+            scale: baseScale,
+            duration: 200,
+            ease: 'Sine.easeOut'
+          });
+        }
+      }
+
+      const effectiveCollectRadius = baseCollectRadius + (this.playerController.isSprinting() ? playerRadius * 0.4 : 0);
+      if (dist < effectiveCollectRadius) {
+        this.collectPetal(petal, dist / baseCollectRadius);
+      }
+    }
+
+    this.playerController.updateNearbyPetalCount(nearbyCount);
+
+    const activeRegion = this.getActiveRegionConfig().id;
+    if (this.playerController.getCurrentTerrain() !== activeRegion) {
+      this.playerController.setTerrain(activeRegion);
     }
   }
 
-  private collectPetal(petal: Phaser.GameObjects.Container): void {
+  private collectPetal(petal: Phaser.GameObjects.Container, distRatio: number = 1): void {
     const data = this.petalData.get(petal);
     if (!data || data.collected) return;
 
     data.collected = true;
     this.audioManager.playCollect();
-    this.animationManager.playCollectEffect(petal.x, petal.y, data.color);
+
+    const isSprintCollect = this.playerController.isSprinting();
+    const absorbIntensity = isSprintCollect ? 1.6 : (1 + (1 - Math.min(1, distRatio)) * 0.8);
+    this.animationManager.playCollectEffect(petal.x, petal.y, data.color, absorbIntensity, isSprintCollect);
 
     this.synthesisSystem.addToInventory(data.tier, data.color);
     this.totalPetalsCollected++;

@@ -64,22 +64,25 @@ export class AnimationManager {
     });
   }
 
-  playCollectEffect(x: number, y: number, color: PetalColor): void {
-    const particleCount = 10;
+  playCollectEffect(x: number, y: number, color: PetalColor, intensity: number = 1, isSprintCollect: boolean = false): void {
+    const particleCount = Math.floor(10 * intensity);
     const glowColor = PETAL_COLOR_MAP[color] ?? 0xffffff;
+
+    const burstScale = intensity;
+    const durationMultiplier = 1 + (intensity - 1) * 0.3;
 
     for (let i = 0; i < particleCount; i++) {
       const particle = this.scene.add.graphics();
       particle.fillStyle(glowColor, 1);
-      const size = 3 + Math.random() * 5;
+      const size = (3 + Math.random() * 5) * Math.sqrt(intensity);
       particle.fillCircle(0, 0, size);
       particle.x = x;
       particle.y = y;
 
-      const angle = (i / particleCount) * Math.PI * 2;
-      const dist = 40 + Math.random() * 60;
+      const angle = (i / particleCount) * Math.PI * 2 + (isSprintCollect ? Math.random() * 0.5 : 0);
+      const dist = (40 + Math.random() * 60) * burstScale;
       const dx = Math.cos(angle) * dist;
-      const dy = Math.sin(angle) * dist - 30;
+      const dy = Math.sin(angle) * dist - 30 * burstScale;
 
       this.scene.tweens.add({
         targets: particle,
@@ -87,26 +90,91 @@ export class AnimationManager {
         y: y + dy,
         alpha: 0,
         scale: 0,
-        duration: 600 + Math.random() * 400,
-        ease: 'Cubic.easeOut',
+        duration: (600 + Math.random() * 400) * durationMultiplier,
+        ease: isSprintCollect ? 'Cubic.easeIn' : 'Cubic.easeOut',
         onComplete: () => particle.destroy()
       });
     }
 
-    const text = this.scene.add.text(x, y - 40, '+收集!', {
+    if (intensity > 1.2) {
+      const burstRings = this.scene.add.graphics();
+      for (let r = 0; r < Math.min(3, Math.floor(intensity)); r++) {
+        burstRings.lineStyle(3 - r, glowColor, 0.7 - r * 0.2);
+        burstRings.strokeCircle(0, 0, 15 + r * 15);
+      }
+      burstRings.x = x;
+      burstRings.y = y;
+      burstRings.setScale(0);
+
+      this.scene.tweens.add({
+        targets: burstRings,
+        scale: 2 * burstScale,
+        alpha: 0,
+        duration: 450 * durationMultiplier,
+        ease: 'Cubic.easeOut',
+        onComplete: () => burstRings.destroy()
+      });
+    }
+
+    const textLabel = isSprintCollect ? '💨 冲刺!' : '+收集!';
+    const fontSize = Math.floor(22 + (intensity - 1) * 6);
+    const textColor = isSprintCollect ? '#fb923c' : '#fde68a';
+
+    const text = this.scene.add.text(x, y - 40, textLabel, {
       fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
-      fontSize: '22px',
-      color: '#fde68a',
-      fontStyle: 'bold'
-    }).setOrigin(0.5);
+      fontSize: `${fontSize}px`,
+      color: textColor,
+      fontStyle: 'bold',
+      stroke: isSprintCollect ? '#7c2d12' : 'transparent',
+      strokeThickness: isSprintCollect ? 3 : 0
+    }).setOrigin(0.5).setScale(0.5);
 
     this.scene.tweens.add({
       targets: text,
-      y: y - 90,
+      y: y - (90 + (intensity - 1) * 20),
       alpha: 0,
-      duration: 700,
-      ease: 'Cubic.easeOut',
+      scale: 1 + (intensity - 1) * 0.3,
+      duration: 700 * durationMultiplier,
+      ease: isSprintCollect ? 'Back.easeIn' : 'Cubic.easeOut',
       onComplete: () => text.destroy()
+    });
+
+    if (isSprintCollect) {
+      this.scene.cameras.main.shake(60, 0.003);
+    }
+  }
+
+  playAbsorbStartEffect(x: number, y: number, color: PetalColor): void {
+    const glowColor = PETAL_COLOR_MAP[color] ?? 0xffffff;
+
+    const spark = this.scene.add.graphics();
+    spark.fillStyle(glowColor, 0.9);
+    spark.fillCircle(0, 0, 2);
+    spark.x = x;
+    spark.y = y;
+
+    this.scene.tweens.add({
+      targets: spark,
+      scale: 2.5,
+      alpha: 0,
+      duration: 250,
+      ease: 'Cubic.easeOut',
+      onComplete: () => spark.destroy()
+    });
+
+    const ripple = this.scene.add.graphics();
+    ripple.lineStyle(2, glowColor, 0.5);
+    ripple.strokeCircle(0, 0, 6);
+    ripple.x = x;
+    ripple.y = y;
+
+    this.scene.tweens.add({
+      targets: ripple,
+      scale: 3,
+      alpha: 0,
+      duration: 350,
+      ease: 'Cubic.easeOut',
+      onComplete: () => ripple.destroy()
     });
   }
 
