@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { PlayerController } from '../controller/PlayerController';
 import { SynthesisSystem } from '../systems/SynthesisSystem';
 import { SaveManager } from '../managers/SaveManager';
+import { AwakeningEvaluator } from '../managers/AwakeningEvaluator';
 import { AudioManager } from '../managers/AudioManager';
 import { AnimationManager } from '../managers/AnimationManager';
 import { EventManager } from '../managers/EventManager';
@@ -35,7 +36,8 @@ import {
   RecentOutput,
   RecommendedRoute,
   TargetGoal,
-  MUTATION_RECIPES_CONFIG
+  MUTATION_RECIPES_CONFIG,
+  TITLE_DEFINITIONS
 } from '../types';
 
 export class GameScene extends Phaser.Scene {
@@ -102,6 +104,8 @@ export class GameScene extends Phaser.Scene {
   private petalsByRegion: Map<RegionId, number> = new Map();
   private pathTrackingTimer!: Phaser.Time.TimerEvent;
   private highestSynthesisTier: PetalTier = 1;
+  private failedSynthesisCount: number = 0;
+  private missedRareCount: number = 0;
   private permanentBonuses!: PermanentBonuses;
 
   private targetTrackingPanel!: Phaser.GameObjects.Container;
@@ -1132,6 +1136,7 @@ export class GameScene extends Phaser.Scene {
 
     const availableMutations = this.synthesisSystem.getAvailableMutations();
     if (availableMutations.length === 0) {
+      this.failedSynthesisCount++;
       this.audioManager.playSynthesisFail();
       this.showGuideText('异变材料不足，需要同阶异色花瓣', 3000);
       return;
@@ -1208,6 +1213,7 @@ export class GameScene extends Phaser.Scene {
       });
     } else {
       this.isSynthesizing = false;
+      this.failedSynthesisCount++;
       this.audioManager.playSynthesisFail();
     }
   }
@@ -1262,7 +1268,9 @@ export class GameScene extends Phaser.Scene {
       appliedEventBonusScore: this.eventBonusScore,
       appliedEventRarePetals: this.eventRarePetalsGranted,
       appliedEventSynthesisBonus: this.eventSynthesisBonus,
-      mutationCount: this.mutationCount
+      mutationCount: this.mutationCount,
+      failedSynthesisCount: this.failedSynthesisCount,
+      missedRareCount: this.missedRareCount
     };
 
     const petalDataArray: PetalType[] = [];
@@ -1307,6 +1315,8 @@ export class GameScene extends Phaser.Scene {
     this.startTime = Date.now() - (gameState.playTime * 1000);
     this.unlockedRegions = gameState.unlockedRegions ?? ['initial'];
     this.rarePetalsCollected = gameState.rarePetalsCollected ?? 0;
+    this.failedSynthesisCount = gameState.failedSynthesisCount ?? 0;
+    this.missedRareCount = gameState.missedRareCount ?? 0;
     this.currentBgRegion = this.getActiveRegionConfig().id;
 
     const currentSave = this.saveManager.getCurrentSave();
@@ -1773,6 +1783,7 @@ export class GameScene extends Phaser.Scene {
       const slot = this.inventorySlots.get(color);
       if (slot) {
         this.animationManager.playShake(slot);
+        this.failedSynthesisCount++;
         this.audioManager.playSynthesisFail();
         this.animationManager.playSynthesisFailEffect(slot.x + GAME_WIDTH / 2, slot.y + GAME_HEIGHT - 720, '材料不足');
       }
@@ -1893,6 +1904,7 @@ export class GameScene extends Phaser.Scene {
       });
     } else {
       this.isSynthesizing = false;
+      this.failedSynthesisCount++;
       const slot = this.inventorySlots.get(color);
       if (slot) this.animationManager.playShake(slot);
       this.audioManager.playSynthesisFail();
@@ -1908,6 +1920,7 @@ export class GameScene extends Phaser.Scene {
       const btn = this.inventorySlots.get('rainbow_btn');
       if (btn) {
         this.animationManager.playShake(btn);
+        this.failedSynthesisCount++;
         this.audioManager.playSynthesisFail();
         this.animationManager.playSynthesisFailEffect(btn.x + GAME_WIDTH / 2, btn.y + GAME_HEIGHT - 720, '材料不足');
       }
@@ -2012,6 +2025,7 @@ export class GameScene extends Phaser.Scene {
       });
     } else {
       this.isSynthesizing = false;
+      this.failedSynthesisCount++;
       const btn = this.inventorySlots.get('rainbow_btn');
       if (btn) this.animationManager.playShake(btn);
       this.audioManager.playSynthesisFail();
@@ -2139,6 +2153,17 @@ export class GameScene extends Phaser.Scene {
 
     const playTime = Math.floor((Date.now() - this.startTime) / 1000);
 
+    let uncollectedRare = 0;
+    this.petalData.forEach(data => {
+      if (!data.collected) {
+        const config = this.getActiveRegionConfig();
+        if (config.spawnRule.rareColor === data.color && config.spawnRule.rareTier === data.tier) {
+          uncollectedRare++;
+        }
+      }
+    });
+    this.missedRareCount += uncollectedRare;
+
     const petalsByColorArray = PETAL_COLORS.map(c => ({
       color: c,
       count: this.petalsByColor.get(c) ?? 0
@@ -2162,8 +2187,24 @@ export class GameScene extends Phaser.Scene {
       efficiencyScore,
       peakRegion,
       highestSynthesisTier: this.highestSynthesisTier,
-      collectionRate
+      collectionRate,
+      failedSynthesisCount: this.failedSynthesisCount,
+      missedRareCount: this.missedRareCount
     };
+
+    const awakeningEvaluation = AwakeningEvaluator.evaluate({
+      score: this.score,
+      rarePetalsCollected: this.rarePetalsCollected,
+      highestSynthesisTier: this.highestSynthesisTier,
+      synthesisCount: this.synthesisCount,
+      playTime,
+      failedSynthesisCount: this.failedSynthesisCount,
+      missedRareCount: this.missedRareCount,
+      victory,
+      unlockedRegions: this.unlockedRegions.length
+    });
+
+    const earnedTitleId = TITLE_DEFINITIONS.find(t => t.title === awakeningEvaluation.title)?.id;
 
     const newlyUnlocked = this.saveManager.saveProgress({
       score: this.score,
@@ -2173,7 +2214,8 @@ export class GameScene extends Phaser.Scene {
       petalsCollected: this.totalPetalsCollected,
       synthesisCount: this.synthesisCount,
       rareCollected: this.rarePetalsCollected,
-      efficiencyScore
+      efficiencyScore,
+      earnedTitleId
     });
 
     if (this.eventManager.isEventActive()) {
@@ -2212,7 +2254,10 @@ export class GameScene extends Phaser.Scene {
       rarePetalsCollected: this.rarePetalsCollected,
       replayData,
       eventData,
-      newlyUnlockedGrowth: newlyUnlocked
+      newlyUnlockedGrowth: newlyUnlocked,
+      failedSynthesisCount: this.failedSynthesisCount,
+      missedRareCount: this.missedRareCount,
+      awakeningEvaluation
     });
   }
 

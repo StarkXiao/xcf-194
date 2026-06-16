@@ -46,6 +46,8 @@ export interface GameState {
   appliedEventRarePetals: number;
   appliedEventSynthesisBonus: number;
   mutationCount: number;
+  failedSynthesisCount: number;
+  missedRareCount: number;
 }
 
 export interface SaveData {
@@ -64,6 +66,7 @@ export interface SaveData {
   eventTitles: string[];
   eventSynthesisBonus: number;
   growthTree: GrowthTreeSaveData;
+  awakeningTitles: string[];
 }
 
 export interface CollectionPathPoint {
@@ -97,6 +100,8 @@ export interface ReplayData {
   peakRegion: RegionId;
   highestSynthesisTier: PetalTier;
   collectionRate: number;
+  failedSynthesisCount: number;
+  missedRareCount: number;
 }
 
 export interface GameSaveData {
@@ -152,7 +157,64 @@ export interface AudioCue {
   totalChain?: number;
 }
 
-export const SAVE_VERSION = '1.3.0';
+export const SAVE_VERSION = '1.4.0';
+
+export type AwakeningBranch = 'power' | 'mystic' | 'speed' | 'perfection';
+
+export interface AwakeningDimensionScore {
+  branch: AwakeningBranch;
+  score: number;
+  grade: 'S' | 'A' | 'B' | 'C';
+  label: string;
+  description: string;
+  icon: string;
+  color: string;
+}
+
+export interface AwakeningEvaluation {
+  primaryBranch: AwakeningBranch;
+  branchScores: AwakeningDimensionScore[];
+  title: string;
+  titleRarity: 'legendary' | 'epic' | 'rare' | 'common';
+  titleIcon: string;
+  titleColor: string;
+  compositeScore: number;
+}
+
+export const AWAKENING_BRANCH_INFO: Record<AwakeningBranch, { name: string; icon: string; color: string }> = {
+  power: { name: '力量之唤醒', icon: '⚔️', color: '#fde68a' },
+  mystic: { name: '奥秘之唤醒', icon: '🔮', color: '#c084fc' },
+  speed: { name: '疾风之唤醒', icon: '💨', color: '#7dd3fc' },
+  perfection: { name: '完美之唤醒', icon: '✨', color: '#86efac' }
+};
+
+export interface TitleDefinition {
+  id: string;
+  title: string;
+  rarity: 'legendary' | 'epic' | 'rare' | 'common';
+  icon: string;
+  color: string;
+  primaryBranch: AwakeningBranch;
+  condition: string;
+}
+
+export const TITLE_DEFINITIONS: TitleDefinition[] = [
+  { id: 'legendary_power', title: '永恒之光', rarity: 'legendary', icon: '🌟', color: '#fde68a', primaryBranch: 'power', condition: '力量维度SS+且总分≥5000' },
+  { id: 'legendary_mystic', title: '万物归一', rarity: 'legendary', icon: '🌀', color: '#c084fc', primaryBranch: 'mystic', condition: '奥秘维度SS+且稀有合成≥8次' },
+  { id: 'legendary_speed', title: '瞬息芳华', rarity: 'legendary', icon: '⚡', color: '#7dd3fc', primaryBranch: 'speed', condition: '疾风维度SS+且≤3分钟通关' },
+  { id: 'legendary_perfection', title: '无瑕之梦', rarity: 'legendary', icon: '💎', color: '#86efac', primaryBranch: 'perfection', condition: '完美维度SS+且零失误' },
+  { id: 'epic_power', title: '星辉守望', rarity: 'epic', icon: '🌟', color: '#fbbf24', primaryBranch: 'power', condition: '力量维度S且总分≥3000' },
+  { id: 'epic_mystic', title: '异变宗师', rarity: 'epic', icon: '🔮', color: '#a78bfa', primaryBranch: 'mystic', condition: '奥秘维度S且稀有合成≥5次' },
+  { id: 'epic_speed', title: '风之行者', rarity: 'epic', icon: '💨', color: '#60a5fa', primaryBranch: 'speed', condition: '疾风维度S且≤5分钟通关' },
+  { id: 'epic_perfection', title: '从容不迫', rarity: 'epic', icon: '✨', color: '#34d399', primaryBranch: 'perfection', condition: '完美维度S且失误≤1' },
+  { id: 'rare_power', title: '力量使者', rarity: 'rare', icon: '⚔️', color: '#fde68a', primaryBranch: 'power', condition: '力量维度A级' },
+  { id: 'rare_mystic', title: '奥秘探寻', rarity: 'rare', icon: '🔮', color: '#c084fc', primaryBranch: 'mystic', condition: '奥秘维度A级' },
+  { id: 'rare_speed', title: '轻风之翼', rarity: 'rare', icon: '💨', color: '#7dd3fc', primaryBranch: 'speed', condition: '疾风维度A级' },
+  { id: 'rare_perfection', title: '稳健行者', rarity: 'rare', icon: '✨', color: '#86efac', primaryBranch: 'perfection', condition: '完美维度A级' },
+  { id: 'common_awakening', title: '初醒者', rarity: 'common', icon: '🌙', color: '#9ca3af', primaryBranch: 'power', condition: '完成唤醒' },
+  { id: 'common_dreamer', title: '追梦人', rarity: 'common', icon: '💫', color: '#c4b5fd', primaryBranch: 'mystic', condition: '未能唤醒但探索了3+区域' },
+  { id: 'common_walker', title: '林间行者', rarity: 'common', icon: '🌿', color: '#a78bfa', primaryBranch: 'speed', condition: '未能唤醒的探索者' }
+];
 
 export type GrowthNodeId =
   | 'score_boost_1'

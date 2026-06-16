@@ -1,4 +1,4 @@
-import { SaveData, GameSaveData, GameState, SAVE_VERSION, Petal, InventoryItem, ReplayData, GrowthTreeSaveData, GrowthNode } from '../types';
+import { SaveData, GameSaveData, GameState, SAVE_VERSION, Petal, InventoryItem, ReplayData, GrowthTreeSaveData, GrowthNode, AwakeningEvaluation } from '../types';
 import { GrowthTreeManager } from './GrowthTreeManager';
 
 const SAVE_KEY = 'dream_forest_save_v1';
@@ -51,6 +51,8 @@ export class SaveManager {
   private migrateSaveData(data: any, version: string): SaveData {
     const growthTree = this.getDefaultGrowthTree(data);
 
+    const awakeningTitles = data.awakeningTitles ?? data.earnedTitles ?? [];
+
     const result: SaveData = {
       bestScore: data.bestScore ?? 0,
       bestProgress: data.bestProgress ?? 0,
@@ -66,7 +68,8 @@ export class SaveManager {
       eventRarePetals: data.eventRarePetals ?? 0,
       eventTitles: data.eventTitles ?? [],
       eventSynthesisBonus: data.eventSynthesisBonus ?? 0,
-      growthTree
+      growthTree,
+      awakeningTitles
     };
 
     if (this.compareVersions(version, '1.1.0') < 0) {
@@ -83,6 +86,13 @@ export class SaveManager {
       console.log('[SaveManager] 存档已升级到 1.3.0，成长树扩展已启用');
       const growthManager = GrowthTreeManager.getInstance();
       growthManager.checkAndUnlockNodes(result);
+    }
+
+    if (this.compareVersions(version, '1.4.0') < 0) {
+      console.log('[SaveManager] 存档已升级到 1.4.0，多分支唤醒评价系统已启用');
+      if (!result.awakeningTitles) {
+        result.awakeningTitles = [];
+      }
     }
 
     return result;
@@ -115,7 +125,8 @@ export class SaveManager {
       eventRarePetals: 0,
       eventTitles: [],
       eventSynthesisBonus: 0,
-      growthTree: growthManager.getDefaultGrowthTree()
+      growthTree: growthManager.getDefaultGrowthTree(),
+      awakeningTitles: []
     };
   }
 
@@ -128,8 +139,13 @@ export class SaveManager {
     synthesisCount?: number;
     rareCollected?: number;
     efficiencyScore?: number;
+    earnedTitleId?: string;
   }): GrowthNode[] {
     const growthManager = GrowthTreeManager.getInstance();
+    const newAwakeningTitles = [...this.saveData.awakeningTitles];
+    if (result.earnedTitleId && !newAwakeningTitles.includes(result.earnedTitleId)) {
+      newAwakeningTitles.push(result.earnedTitleId);
+    }
     const newBest: SaveData = {
       bestScore: Math.max(this.saveData.bestScore, result.score),
       bestProgress: Math.max(this.saveData.bestProgress, Math.floor(result.progress)),
@@ -149,7 +165,8 @@ export class SaveManager {
         unlockedNodes: [...this.saveData.growthTree.unlockedNodes],
         newUnlockedNodes: [...this.saveData.growthTree.newUnlockedNodes],
         lastCheckedAt: this.saveData.growthTree.lastCheckedAt
-      }
+      },
+      awakeningTitles: newAwakeningTitles
     };
 
     const newlyUnlocked = growthManager.checkAndUnlockNodes(newBest);
@@ -181,7 +198,8 @@ export class SaveManager {
       eventRarePetals: 0,
       eventTitles: [],
       eventSynthesisBonus: 0,
-      growthTree: growthManager.getDefaultGrowthTree()
+      growthTree: growthManager.getDefaultGrowthTree(),
+      awakeningTitles: []
     };
     try {
       localStorage.removeItem(SAVE_KEY);
@@ -197,7 +215,8 @@ export class SaveManager {
         unlockedNodes: [...this.saveData.growthTree.unlockedNodes],
         newUnlockedNodes: [...this.saveData.growthTree.newUnlockedNodes],
         lastCheckedAt: this.saveData.growthTree.lastCheckedAt
-      }
+      },
+      awakeningTitles: [...this.saveData.awakeningTitles]
     };
   }
 
@@ -260,6 +279,18 @@ export class SaveManager {
 
   getEventSynthesisBonus(): number {
     return this.saveData.eventSynthesisBonus;
+  }
+
+  addAwakeningTitle(title: string): void {
+    if (!this.saveData.awakeningTitles.includes(title)) {
+      this.saveData.awakeningTitles.push(title);
+      this.persistSave();
+      console.log('[SaveManager] 唤醒称号已获得:', title);
+    }
+  }
+
+  getAwakeningTitles(): string[] {
+    return [...this.saveData.awakeningTitles];
   }
 
   private persistSave(): void {
@@ -356,6 +387,10 @@ export class SaveManager {
     }
     if (typeof result.gameState.appliedEventSynthesisBonus !== 'number') {
       result.gameState.appliedEventSynthesisBonus = 0;
+    }
+
+    if (typeof (result.gameState as any).failedSynthesisCount !== 'number') {
+      (result.gameState as any).failedSynthesisCount = 0;
     }
 
     return result;
@@ -470,7 +505,7 @@ export class SaveManager {
     this.clearGameState();
   }
 
-  generateShareText(replayData: ReplayData, score: number, progress: number, playTime: number, victory: boolean): string {
+  generateShareText(replayData: ReplayData, score: number, progress: number, playTime: number, victory: boolean, evaluation?: AwakeningEvaluation): string {
     const timeStr = `${Math.floor(playTime / 60)}:${(playTime % 60).toString().padStart(2, '0')}`;
     const lines: string[] = [
       '🌸 梦境森林 · 局内复盘 🌸',
@@ -479,12 +514,24 @@ export class SaveManager {
       `✨ 分数: ${score}  💖 进度: ${Math.floor(progress)}%`,
       `⏱ 时长: ${timeStr}`,
       '',
+    ];
+
+    if (evaluation) {
+      lines.push(`🏅 称号: ${evaluation.titleIcon} ${evaluation.title}`);
+      const rarityLabel = evaluation.titleRarity === 'legendary' ? '传说' :
+                          evaluation.titleRarity === 'epic' ? '史诗' :
+                          evaluation.titleRarity === 'rare' ? '稀有' : '普通';
+      lines.push(`📈 稀有度: ${rarityLabel}  综合: ${evaluation.compositeScore}  ${evaluation.branchScores.map(b => `${b.icon}${b.label}`).join('  ')}`);
+      lines.push('');
+    }
+
+    lines.push(
       `📊 效率评分: ${replayData.efficiencyScore.toFixed(0)}`,
       `🌸 采集效率: ${replayData.collectionRate.toFixed(1)} 朵/分`,
       `⭐ 最高合成: Lv.${replayData.highestSynthesisTier}`,
       '',
       '🎨 花瓣采集:'
-    ];
+    );
     replayData.petalsByColor.forEach(p => {
       lines.push(`  ${p.color === 'pink' ? '🩷' : p.color === 'blue' ? '💙' : p.color === 'purple' ? '💜' : p.color === 'gold' ? '💛' : '🌈'} ${p.color} ×${p.count}`);
     });

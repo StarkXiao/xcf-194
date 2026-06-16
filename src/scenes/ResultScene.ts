@@ -10,9 +10,12 @@ import {
   REGION_CONFIGS,
   ReplayData,
   PetalColor,
-  PETAL_COLOR_MAP,
   PETAL_TIER_NAMES,
-  GrowthNode
+  GrowthNode,
+  AwakeningEvaluation,
+  TITLE_DEFINITIONS,
+  AwakeningBranch,
+  AWAKENING_BRANCH_INFO
 } from '../types';
 import { GrowthTreeManager } from '../managers/GrowthTreeManager';
 
@@ -28,6 +31,9 @@ interface ResultData {
   replayData?: ReplayData;
   eventData?: any;
   newlyUnlockedGrowth?: GrowthNode[];
+  failedSynthesisCount?: number;
+  missedRareCount?: number;
+  awakeningEvaluation?: AwakeningEvaluation;
 }
 
 const COLOR_HEX: Record<PetalColor, number> = {
@@ -55,6 +61,7 @@ export class ResultScene extends Phaser.Scene {
   private contentHeight: number = 0;
   private scrollY: number = 0;
   private maxScroll: number = 0;
+  private lastEvaluation: AwakeningEvaluation | null = null;
 
   constructor() {
     super('ResultScene');
@@ -123,6 +130,7 @@ export class ResultScene extends Phaser.Scene {
     let y = 30;
 
     y = this.createHeader(y);
+    y = this.createAwakeningSection(y);
     y = this.createStatsSection(y);
     y = this.createEfficiencySection(y);
     y = this.createCollectionPathSection(y);
@@ -170,6 +178,139 @@ export class ResultScene extends Phaser.Scene {
     return y + 170;
   }
 
+  private createAwakeningSection(startY: number): number {
+    const y = startY;
+    const panelX = GAME_WIDTH / 2 - 320;
+    const panelW = 640;
+
+    const evaluation = this.resultData.awakeningEvaluation;
+    if (!evaluation) return y;
+
+    this.lastEvaluation = evaluation;
+
+    const branchH = 50;
+    const panelH = 100 + evaluation.branchScores.length * branchH + 80;
+
+    const panel = this.add.graphics();
+    panel.fillStyle(0x1e1b4b, 0.92);
+    panel.fillRoundedRect(panelX, y, panelW, panelH, 20);
+    panel.lineStyle(2, 0xfbbf24, 0.6);
+    panel.strokeRoundedRect(panelX, y, panelW, panelH, 20);
+    this.scrollContainer.add(panel);
+
+    this.scrollContainer.add(
+      this.add.text(GAME_WIDTH / 2, y + 30, '🌅 唤醒评价', {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '24px',
+        color: '#fde68a',
+        fontStyle: 'bold'
+      }).setOrigin(0.5)
+    );
+
+    evaluation.branchScores.forEach((branch, i) => {
+      const by = y + 70 + i * branchH;
+
+      const branchBg = this.add.graphics();
+      branchBg.fillStyle(0x312e81, 0.5);
+      branchBg.fillRoundedRect(panelX + 30, by, panelW - 60, 40, 10);
+      this.scrollContainer.add(branchBg);
+
+      const isPrimary = branch.branch === evaluation.primaryBranch;
+      const labelColor = isPrimary ? '#fde68a' : '#c4b5fd';
+
+      this.scrollContainer.add(
+        this.add.text(panelX + 50, by + 20, `${branch.icon} ${branch.label}`, {
+          fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+          fontSize: '18px',
+          color: labelColor
+        }).setOrigin(0, 0.5)
+      );
+
+      const scoreBarW = 150;
+      const scoreBarX = panelX + 190;
+      const barBg = this.add.graphics();
+      barBg.fillStyle(0x1e1b4b, 0.8);
+      barBg.fillRoundedRect(scoreBarX, by + 10, scoreBarW, 20, 10);
+      this.scrollContainer.add(barBg);
+
+      const fillColor = parseInt(branch.color.replace('#', ''), 16);
+      const barFill = this.add.graphics();
+      barFill.fillStyle(fillColor, 0.7);
+      barFill.fillRoundedRect(scoreBarX, by + 10, scoreBarW * (branch.score / 100), 20, 10);
+      this.scrollContainer.add(barFill);
+
+      const gradeColorNum = parseInt(branch.color.replace('#', ''), 16);
+      const gradeBg = this.add.graphics();
+      gradeBg.fillStyle(gradeColorNum, 0.2);
+      gradeBg.fillRoundedRect(panelX + 360, by + 5, 60, 30, 15);
+      this.scrollContainer.add(gradeBg);
+
+      this.scrollContainer.add(
+        this.add.text(panelX + 390, by + 20, branch.label, {
+          fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+          fontSize: '18px',
+          color: branch.color,
+          fontStyle: 'bold'
+        }).setOrigin(0.5)
+      );
+
+      this.scrollContainer.add(
+        this.add.text(panelX + panelW - 40, by + 20, branch.description, {
+          fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+          fontSize: '14px',
+          color: '#94a3b8'
+        }).setOrigin(1, 0.5)
+      );
+    });
+
+    const titleY = y + 70 + evaluation.branchScores.length * branchH + 15;
+
+    const divider = this.add.graphics();
+    divider.lineStyle(1, 0x6366f1, 0.4);
+    divider.lineBetween(panelX + 30, titleY, panelX + panelW - 30, titleY);
+    this.scrollContainer.add(divider);
+
+    const titleAreaY = titleY + 35;
+
+    this.scrollContainer.add(
+      this.add.text(GAME_WIDTH / 2, titleAreaY, `${evaluation.titleIcon} ${evaluation.title}`, {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '28px',
+        color: evaluation.titleColor,
+        fontStyle: 'bold'
+      }).setOrigin(0.5).setAlpha(0)
+    );
+
+    const titleTextObj = this.scrollContainer.getAll().pop() as Phaser.GameObjects.Text;
+
+    this.tweens.add({
+      targets: titleTextObj,
+      alpha: 1,
+      scale: { from: 0.5, to: 1 },
+      duration: 800,
+      delay: 300,
+      ease: 'Back.easeOut'
+    });
+
+    const rarityLabel = evaluation.titleRarity === 'legendary' ? '✦ 传说' :
+                        evaluation.titleRarity === 'epic' ? '◆ 史诗' :
+                        evaluation.titleRarity === 'rare' ? '● 稀有' : '○ 普通';
+
+    this.scrollContainer.add(
+      this.add.text(GAME_WIDTH / 2, titleAreaY + 32, `${rarityLabel}  综合: ${evaluation.compositeScore}`, {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '16px',
+        color: '#94a3b8'
+      }).setOrigin(0.5)
+    );
+
+    return y + panelH + 15;
+  }
+
+  private addAwakeningTitle(title: string): void {
+    this.saveManager.addAwakeningTitle(title);
+  }
+
   private createStatsSection(startY: number): number {
     const y = startY;
     const panelX = GAME_WIDTH / 2 - 320;
@@ -177,9 +318,9 @@ export class ResultScene extends Phaser.Scene {
 
     const panel = this.add.graphics();
     panel.fillStyle(0x1e1b4b, 0.92);
-    panel.fillRoundedRect(panelX, y, panelW, 310, 20);
+    panel.fillRoundedRect(panelX, y, panelW, 350, 20);
     panel.lineStyle(2, 0x6366f1, 0.6);
-    panel.strokeRoundedRect(panelX, y, panelW, 310, 20);
+    panel.strokeRoundedRect(panelX, y, panelW, 350, 20);
     this.scrollContainer.add(panel);
 
     this.scrollContainer.add(
@@ -197,7 +338,9 @@ export class ResultScene extends Phaser.Scene {
       { label: '🌸 收集花瓣', value: this.resultData.totalPetalsCollected.toString(), color: '#86efac' },
       { label: '⭐ 合成次数', value: this.resultData.synthesisCount.toString(), color: '#93c5fd' },
       { label: '💎 稀有花瓣', value: (this.resultData.rarePetalsCollected ?? 0).toString(), color: '#fbbf24' },
-      { label: '⏱️ 游戏时长', value: this.formatTime(this.resultData.playTime), color: '#c4b5fd' }
+      { label: '⏱️ 游戏时长', value: this.formatTime(this.resultData.playTime), color: '#c4b5fd' },
+      { label: '❌ 合成失误', value: (this.resultData.failedSynthesisCount ?? 0).toString(), color: '#f87171' },
+      { label: '💫 错过稀有', value: (this.resultData.missedRareCount ?? 0).toString(), color: '#fb923c' }
     ];
 
     stats.forEach((stat, i) => {
@@ -240,7 +383,7 @@ export class ResultScene extends Phaser.Scene {
       });
     }
 
-    return y + 325;
+    return y + 365;
   }
 
   private createEfficiencySection(startY: number): number {
@@ -1143,7 +1286,9 @@ export class ResultScene extends Phaser.Scene {
       efficiencyScore: 0,
       peakRegion: 'initial' as RegionId,
       highestSynthesisTier: 1 as any,
-      collectionRate: 0
+      collectionRate: 0,
+      failedSynthesisCount: 0,
+      missedRareCount: 0
     };
 
     const shareText = this.saveManager.generateShareText(
@@ -1151,7 +1296,8 @@ export class ResultScene extends Phaser.Scene {
       this.resultData.score,
       this.resultData.awakeProgress,
       this.resultData.playTime,
-      this.resultData.victory
+      this.resultData.victory,
+      this.lastEvaluation ?? undefined
     );
 
     const success = this.saveManager.copyToClipboard(shareText);
