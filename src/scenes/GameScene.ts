@@ -540,6 +540,8 @@ export class GameScene extends Phaser.Scene {
       body.setCircle(25);
       body.setAllowGravity(false);
     }
+
+    this.registerPetalPhysics(petalContainer);
   }
 
   private createLover(): void {
@@ -1317,6 +1319,8 @@ export class GameScene extends Phaser.Scene {
         body.setCircle(25);
         body.setAllowGravity(false);
       }
+
+      this.registerPetalPhysics(petalContainer);
     });
 
     this.updateScore();
@@ -1399,6 +1403,8 @@ export class GameScene extends Phaser.Scene {
       body.setCircle(25);
       body.setAllowGravity(false);
     }
+
+    this.registerPetalPhysics(petalContainer);
   }
 
   private createPetalVisual(container: Phaser.GameObjects.Container, color: PetalColor, tier: PetalTier, variant?: PetalVariant): void {
@@ -1477,25 +1483,78 @@ export class GameScene extends Phaser.Scene {
 
   private playerPhysicsBody: Phaser.Physics.Arcade.Body | null = null;
   private lastSprintState: boolean = false;
+  private petalPhysicsGroup: Phaser.Physics.Arcade.Group | null = null;
+  private collectedByPhysicsThisFrame: Set<Phaser.GameObjects.Container> = new Set();
 
   private setupCollisions(): void {
-    const playerContainer = (this.playerController as any).container as Phaser.GameObjects.Container;
-    if (playerContainer && this.physics.world) {
+    if (!this.physics.world) return;
+
+    this.petalPhysicsGroup = this.physics.add.group({
+      allowGravity: false,
+      immovable: false
+    });
+
+    this.petals.forEach(petal => {
+      this.registerPetalPhysics(petal);
+    });
+
+    const playerContainer = this.playerController.getContainer();
+    if (playerContainer) {
       this.physics.add.existing(playerContainer);
       this.playerPhysicsBody = playerContainer.body as Phaser.Physics.Arcade.Body;
       if (this.playerPhysicsBody) {
-        this.playerPhysicsBody.setCircle(25, -25, -25);
+        const initialRadius = this.playerController.getSprintCollisionRadius();
+        this.playerPhysicsBody.setCircle(initialRadius, -initialRadius, -initialRadius);
         this.playerPhysicsBody.setAllowGravity(false);
         this.playerPhysicsBody.setImmovable(true);
         this.playerPhysicsBody.enable = true;
+        this.playerPhysicsBody.debugBodyColor = 0x00ff00;
       }
     }
 
+    this.physics.add.overlap(
+      playerContainer,
+      this.petalPhysicsGroup,
+      (playerObj, petalObj) => {
+        const petal = petalObj as Phaser.GameObjects.Container;
+        if (!this.collectedByPhysicsThisFrame.has(petal)) {
+          this.collectedByPhysicsThisFrame.add(petal);
+          const data = this.petalData.get(petal);
+          if (data && !data.collected) {
+            const playerPos = this.playerController.getPosition();
+            const dist = Phaser.Math.Distance.Between(playerPos.x, playerPos.y, petal.x, petal.y);
+            const baseCollectRadius = 70 + this.permanentBonuses.collectRadiusBonus;
+            this.collectPetal(petal, dist / baseCollectRadius);
+          }
+        }
+      },
+      (playerObj, petalObj) => {
+        const petal = petalObj as Phaser.GameObjects.Container;
+        const data = this.petalData.get(petal);
+        return data && !data.collected;
+      }
+    );
+
     this.physics.world.on('worldstep', () => {
       if (this.isCompleted) return;
+      this.collectedByPhysicsThisFrame.clear();
       this.checkPetalCollection();
       this.syncPlayerCollisionBody();
     });
+  }
+
+  private registerPetalPhysics(petal: Phaser.GameObjects.Container): void {
+    if (!this.petalPhysicsGroup) return;
+    if (!petal.body) {
+      this.physics.add.existing(petal);
+    }
+    this.petalPhysicsGroup.add(petal);
+    const body = petal.body as Phaser.Physics.Arcade.Body;
+    if (body) {
+      body.setCircle(22, -22, -22);
+      body.setAllowGravity(false);
+      body.enable = true;
+    }
   }
 
   private syncPlayerCollisionBody(): void {
@@ -1522,8 +1581,6 @@ export class GameScene extends Phaser.Scene {
     const absorbRange = this.playerController.getAbsorbRange();
     const absorbStrength = this.playerController.getAbsorbStrength();
 
-    const playerRadius = this.playerController.getSprintCollisionRadius();
-
     let nearbyCount = 0;
     const absorbStartRadius = baseCollectRadius * 1.2;
 
@@ -1549,6 +1606,13 @@ export class GameScene extends Phaser.Scene {
         petal.x += nx * pullStrength;
         petal.y += ny * pullStrength;
 
+        if (petal.body) {
+          const body = petal.body as Phaser.Physics.Arcade.Body;
+          body.position.x = petal.x - body.halfWidth;
+          body.position.y = petal.y - body.halfHeight;
+          body.updateCenter();
+        }
+
         const isAbsorbing = petal.getData('isAbsorbing');
         if (!isAbsorbing) {
           petal.setData('isAbsorbing', true);
@@ -1570,11 +1634,6 @@ export class GameScene extends Phaser.Scene {
           });
         }
       }
-
-      const effectiveCollectRadius = baseCollectRadius + (this.playerController.isSprinting() ? playerRadius * 0.4 : 0);
-      if (dist < effectiveCollectRadius) {
-        this.collectPetal(petal, dist / baseCollectRadius);
-      }
     }
 
     this.playerController.updateNearbyPetalCount(nearbyCount);
@@ -1595,6 +1654,12 @@ export class GameScene extends Phaser.Scene {
     const isSprintCollect = this.playerController.isSprinting();
     const absorbIntensity = isSprintCollect ? 1.6 : (1 + (1 - Math.min(1, distRatio)) * 0.8);
     this.animationManager.playCollectEffect(petal.x, petal.y, data.color, absorbIntensity, isSprintCollect);
+
+    if (this.petalPhysicsGroup && petal.body) {
+      this.petalPhysicsGroup.remove(petal, false, true);
+      const body = petal.body as Phaser.Physics.Arcade.Body;
+      body.enable = false;
+    }
 
     this.synthesisSystem.addToInventory(data.tier, data.color);
     this.totalPetalsCollected++;
@@ -1646,6 +1711,12 @@ export class GameScene extends Phaser.Scene {
         const idx = this.petals.indexOf(petal);
         if (idx > -1) this.petals.splice(idx, 1);
         this.petalData.delete(petal);
+        if (petal.body) {
+          (petal.body as Phaser.Physics.Arcade.Body).destroy();
+        }
+        if (this.petalPhysicsGroup) {
+          this.petalPhysicsGroup.remove(petal, false, false);
+        }
         petal.destroy();
       }
     });

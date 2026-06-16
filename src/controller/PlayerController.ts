@@ -631,6 +631,10 @@ export class PlayerController {
     return this.sprintState.isSprinting ? 35 : 25;
   }
 
+  getContainer(): Phaser.GameObjects.Container {
+    return this.container;
+  }
+
   getPosition(): { x: number; y: number } {
     return { x: this.container.x, y: this.container.y };
   }

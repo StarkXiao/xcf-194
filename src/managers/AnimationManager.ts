@@ -116,7 +116,7 @@ export class AnimationManager {
       });
     }
 
-    const textLabel = isSprintCollect ? '💨 冲刺!' : '+收集!';
+    const textLabel = isSprintCollect ? '[冲刺]' : '+收集!';
     const fontSize = Math.floor(22 + (intensity - 1) * 6);
     const textColor = isSprintCollect ? '#fb923c' : '#fde68a';
 
