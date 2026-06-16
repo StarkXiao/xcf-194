@@ -18,6 +18,8 @@ import {
   PETAL_VARIANT_NAMES,
   PETAL_VARIANT_COLOR_MAP,
   PETAL_VARIANT_EMOJI,
+  PETAL_TIER_NAMES,
+  PETAL_COLOR_MAP,
   GameState,
   Petal as PetalType,
   RegionId,
@@ -27,7 +29,13 @@ import {
   SynthesisLogEntry,
   RewardSource,
   ReplayData,
-  PermanentBonuses
+  PermanentBonuses,
+  TargetTrackingData,
+  MaterialShortage,
+  RecentOutput,
+  RecommendedRoute,
+  TargetGoal,
+  MUTATION_RECIPES_CONFIG
 } from '../types';
 
 export class GameScene extends Phaser.Scene {
@@ -96,6 +104,18 @@ export class GameScene extends Phaser.Scene {
   private highestSynthesisTier: PetalTier = 1;
   private permanentBonuses!: PermanentBonuses;
 
+  private targetTrackingPanel!: Phaser.GameObjects.Container;
+  private targetPanelToggleBtn!: Phaser.GameObjects.Container;
+  private targetPanelVisible: boolean = false;
+  private targetPanelContent!: Phaser.GameObjects.Container;
+  private shortageContainer!: Phaser.GameObjects.Container;
+  private recentOutputContainer!: Phaser.GameObjects.Container;
+  private routeContainer!: Phaser.GameObjects.Container;
+  private activeGoalDisplay!: Phaser.GameObjects.Container;
+  private goalSelectorContainer!: Phaser.GameObjects.Container;
+  private goalSelectorVisible: boolean = false;
+  private targetUpdateTimer!: Phaser.Time.TimerEvent;
+
   constructor() {
     super('GameScene');
   }
@@ -127,6 +147,7 @@ export class GameScene extends Phaser.Scene {
     this.createMutationButton();
     this.createMutationPanel();
     this.createSaveStatus();
+    this.createTargetTrackingPanel();
     this.playerController.create(this.cameras.main.width / 2, this.cameras.main.height - 450);
 
     const initData = this.scene.settings.data as { loadSave?: boolean } | undefined;
@@ -143,6 +164,7 @@ export class GameScene extends Phaser.Scene {
     this.startAutoSave();
     this.startPathTracking();
     this.setupCollisions();
+    this.startTargetTrackingUpdate();
 
     const validation = this.synthesisSystem.validateInventory();
     if (!validation.valid) {
@@ -1133,6 +1155,12 @@ export class GameScene extends Phaser.Scene {
           const baseProgress = result.output.tier * 5 * result.output.count;
           totalScore += baseScore;
           totalProgress += baseProgress;
+          this.synthesisSystem.recordOutput(
+            result.output.tier,
+            result.output.color,
+            result.output.count,
+            result.output.variant
+          );
         }
       });
 
@@ -1156,6 +1184,9 @@ export class GameScene extends Phaser.Scene {
 
       this.updateInventoryDisplay();
       this.updateMutationPanelDisplay();
+      if (this.targetPanelVisible) {
+        this.updateTargetTrackingDisplay();
+      }
 
       this.showGuideText(`🧬 异变成功！${successCount} 次异变 +${totalScore}分`, 3000);
 
@@ -1700,6 +1731,9 @@ export class GameScene extends Phaser.Scene {
     this.checkRegionUnlocks();
 
     this.updateInventoryDisplay();
+    if (this.targetPanelVisible) {
+      this.updateTargetTrackingDisplay();
+    }
 
     this.tweens.add({
       targets: petal,
@@ -1779,6 +1813,7 @@ export class GameScene extends Phaser.Scene {
         if (output.tier > this.highestSynthesisTier) {
           this.highestSynthesisTier = output.tier;
         }
+        this.synthesisSystem.recordOutput(output.tier, output.color, output.count);
       });
       totalScore += this.permanentBonuses.synthesisScoreBonus * result.totalSynthesized;
       totalScore = Math.floor(totalScore * this.permanentBonuses.scoreMultiplier) + bonusScore;
@@ -1844,6 +1879,9 @@ export class GameScene extends Phaser.Scene {
       }
 
       this.updateInventoryDisplay();
+      if (this.targetPanelVisible) {
+        this.updateTargetTrackingDisplay();
+      }
 
       const totalDelay = this.animationManager.calculateChainDelay(0, result.chainLength) * result.chainLength + 1000;
       this.time.delayedCall(totalDelay, () => {
@@ -1909,6 +1947,7 @@ export class GameScene extends Phaser.Scene {
         if (output.tier > this.highestSynthesisTier) {
           this.highestSynthesisTier = output.tier;
         }
+        this.synthesisSystem.recordOutput(output.tier, output.color, output.count);
       });
       totalScore += this.permanentBonuses.synthesisScoreBonus * result.totalSynthesized;
       totalScore = Math.floor(totalScore * this.permanentBonuses.scoreMultiplier) + rainbowBonusScore;
@@ -1959,6 +1998,9 @@ export class GameScene extends Phaser.Scene {
       }
 
       this.updateInventoryDisplay();
+      if (this.targetPanelVisible) {
+        this.updateTargetTrackingDisplay();
+      }
 
       const totalDelay = this.animationManager.calculateChainDelay(0, result.chainLength) * result.chainLength + 1000;
       this.time.delayedCall(totalDelay, () => {
@@ -2214,5 +2256,679 @@ export class GameScene extends Phaser.Scene {
       width: GAME_WIDTH - 80,
       height: GAME_HEIGHT - 720
     };
+  }
+
+  private createTargetTrackingPanel(): void {
+    this.targetPanelToggleBtn = this.add.container(GAME_WIDTH - 60, 340);
+    this.targetPanelToggleBtn.setDepth(150);
+
+    const toggleBg = this.add.graphics();
+    toggleBg.fillStyle(0x7c3aed, 0.9);
+    toggleBg.fillCircle(0, 0, 28);
+    toggleBg.lineStyle(2, 0xfbbf24, 0.8);
+    toggleBg.strokeCircle(0, 0, 28);
+    this.targetPanelToggleBtn.add(toggleBg);
+    this.targetPanelToggleBtn.setData('bg', toggleBg);
+
+    const toggleIcon = this.add.text(0, 0, '🎯', { fontSize: '24px' }).setOrigin(0.5);
+    this.targetPanelToggleBtn.add(toggleIcon);
+
+    this.targetPanelToggleBtn.setSize(56, 56);
+    this.targetPanelToggleBtn.setInteractive();
+    this.targetPanelToggleBtn.on('pointerdown', () => this.toggleTargetPanel());
+
+    this.targetTrackingPanel = this.add.container(GAME_WIDTH / 2, GAME_HEIGHT / 2);
+    this.targetTrackingPanel.setDepth(400);
+    this.targetTrackingPanel.setAlpha(0);
+    this.targetTrackingPanel.setVisible(false);
+
+    const panelBg = this.add.graphics();
+    panelBg.fillStyle(0x0a0514, 0.6);
+    panelBg.fillRect(-GAME_WIDTH / 2, -GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT);
+    this.targetTrackingPanel.add(panelBg);
+    panelBg.setInteractive(
+      new Phaser.Geom.Rectangle(-GAME_WIDTH / 2, -GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT),
+      Phaser.Geom.Rectangle.Contains
+    );
+    panelBg.on('pointerdown', () => this.toggleTargetPanel());
+
+    this.targetPanelContent = this.add.container(0, 20);
+    this.targetTrackingPanel.add(this.targetPanelContent);
+
+    const contentBg = this.add.graphics();
+    contentBg.fillStyle(0x1e1b4b, 0.98);
+    contentBg.fillRoundedRect(-340, -420, 680, 840, 24);
+    contentBg.lineStyle(3, 0xfbbf24, 0.85);
+    contentBg.strokeRoundedRect(-340, -420, 680, 840, 24);
+    this.targetPanelContent.add(contentBg);
+
+    const title = this.add.text(0, -395, '🎯 目标追踪中心', {
+      fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+      fontSize: '26px',
+      color: '#fde68a',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.targetPanelContent.add(title);
+
+    const closeBtn = this.add.container(310, -390);
+    const closeBg = this.add.graphics();
+    closeBg.fillStyle(0x4c1d95, 0.9);
+    closeBg.fillCircle(0, 0, 22);
+    closeBg.lineStyle(2, 0xfbbf24, 0.8);
+    closeBg.strokeCircle(0, 0, 22);
+    closeBtn.add(closeBg);
+    const closeText = this.add.text(0, 0, '✕', {
+      fontSize: '20px',
+      color: '#fde68a',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    closeBtn.add(closeText);
+    closeBtn.setSize(44, 44);
+    closeBtn.setInteractive();
+    closeBtn.on('pointerdown', () => this.toggleTargetPanel());
+    this.targetPanelContent.add(closeBtn);
+
+    this.activeGoalDisplay = this.add.container(0, -320);
+    this.targetPanelContent.add(this.activeGoalDisplay);
+
+    this.shortageContainer = this.add.container(0, -190);
+    this.targetPanelContent.add(this.shortageContainer);
+
+    this.recentOutputContainer = this.add.container(0, 10);
+    this.targetPanelContent.add(this.recentOutputContainer);
+
+    this.routeContainer = this.add.container(0, 210);
+    this.targetPanelContent.add(this.routeContainer);
+
+    this.goalSelectorContainer = this.add.container(0, 0);
+    this.goalSelectorContainer.setDepth(500);
+    this.goalSelectorContainer.setAlpha(0);
+    this.goalSelectorContainer.setVisible(false);
+    this.targetTrackingPanel.add(this.goalSelectorContainer);
+
+    const selectorOverlay = this.add.graphics();
+    selectorOverlay.fillStyle(0x0a0514, 0.7);
+    selectorOverlay.fillRect(-GAME_WIDTH / 2, -GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT);
+    this.goalSelectorContainer.add(selectorOverlay);
+    selectorOverlay.setInteractive(
+      new Phaser.Geom.Rectangle(-GAME_WIDTH / 2, -GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT),
+      Phaser.Geom.Rectangle.Contains
+    );
+    selectorOverlay.on('pointerdown', () => this.toggleGoalSelector());
+
+    const selectorBg = this.add.graphics();
+    selectorBg.fillStyle(0x1e1b4b, 0.98);
+    selectorBg.fillRoundedRect(-310, -280, 620, 560, 22);
+    selectorBg.lineStyle(3, 0xa78bfa, 0.85);
+    selectorBg.strokeRoundedRect(-310, -280, 620, 560, 22);
+    this.goalSelectorContainer.add(selectorBg);
+
+    const selectorTitle = this.add.text(0, -250, '📋 选择追踪目标', {
+      fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+      fontSize: '24px',
+      color: '#fde68a',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.goalSelectorContainer.add(selectorTitle);
+
+    this.updateTargetTrackingDisplay();
+  }
+
+  private startTargetTrackingUpdate(): void {
+    this.targetUpdateTimer = this.time.addEvent({
+      delay: 1500,
+      loop: true,
+      callback: () => {
+        if (this.isCompleted) return;
+        if (this.targetPanelVisible) {
+          this.updateTargetTrackingDisplay();
+        }
+      }
+    });
+  }
+
+  private toggleTargetPanel(): void {
+    this.audioManager.playClick();
+
+    if (this.targetPanelVisible) {
+      this.tweens.add({
+        targets: this.targetTrackingPanel,
+        alpha: 0,
+        scale: 0.9,
+        duration: 250,
+        ease: 'Sine.easeIn',
+        onComplete: () => {
+          this.targetTrackingPanel.setVisible(false);
+        }
+      });
+      this.targetPanelVisible = false;
+      if (this.goalSelectorVisible) {
+        this.toggleGoalSelector();
+      }
+    } else {
+      this.targetTrackingPanel.setVisible(true);
+      this.targetTrackingPanel.setAlpha(0);
+      this.targetTrackingPanel.setScale(0.9);
+      this.updateTargetTrackingDisplay();
+      this.tweens.add({
+        targets: this.targetTrackingPanel,
+        alpha: 1,
+        scale: 1,
+        duration: 300,
+        ease: 'Back.easeOut'
+      });
+      this.targetPanelVisible = true;
+    }
+  }
+
+  private toggleGoalSelector(): void {
+    this.audioManager.playClick();
+
+    if (this.goalSelectorVisible) {
+      this.tweens.add({
+        targets: this.goalSelectorContainer,
+        alpha: 0,
+        scale: 0.9,
+        duration: 200,
+        ease: 'Sine.easeIn',
+        onComplete: () => {
+          this.goalSelectorContainer.setVisible(false);
+        }
+      });
+      this.goalSelectorVisible = false;
+    } else {
+      this.renderGoalSelector();
+      this.goalSelectorContainer.setVisible(true);
+      this.goalSelectorContainer.setAlpha(0);
+      this.goalSelectorContainer.setScale(0.9);
+      this.tweens.add({
+        targets: this.goalSelectorContainer,
+        alpha: 1,
+        scale: 1,
+        duration: 250,
+        ease: 'Back.easeOut'
+      });
+      this.goalSelectorVisible = true;
+    }
+  }
+
+  private onGoalSelect(goalId: string): void {
+    this.audioManager.playClick();
+    this.synthesisSystem.setActiveGoal(goalId);
+    this.updateTargetTrackingDisplay();
+    this.toggleGoalSelector();
+    this.showGuideText('🎯 已切换追踪目标', 2000);
+  }
+
+  private renderActiveGoal(): void {
+    this.activeGoalDisplay.removeAll(true);
+
+    const data = this.synthesisSystem.getTargetTrackingData();
+    const goal = data.activeGoal;
+
+    const headerBg = this.add.graphics();
+    headerBg.fillStyle(0x312e81, 0.8);
+    headerBg.fillRoundedRect(-310, 0, 620, 110, 16);
+    headerBg.lineStyle(2, goal?.completed ? 0x34d399 : 0xfbbf24, 0.7);
+    headerBg.strokeRoundedRect(-310, 0, 620, 110, 16);
+    this.activeGoalDisplay.add(headerBg);
+
+    if (!goal) {
+      const noGoalText = this.add.text(0, 55, '暂无追踪目标，点击选择目标', {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '18px',
+        color: '#a78bfa'
+      }).setOrigin(0.5);
+      this.activeGoalDisplay.add(noGoalText);
+    } else {
+      const goalEmoji = goal.type === 'tier' ? '⭐' : goal.type === 'rainbow' ? '🌈' : goal.type === 'variant' ? '🧬' : '🎯';
+      const goalColor = goal.targetColor ? PETAL_COLOR_MAP[goal.targetColor] : 0xfbbf24;
+
+      const goalDot = this.add.graphics();
+      goalDot.fillStyle(goalColor, 1);
+      goalDot.fillCircle(-270, 35, 14);
+      if (goal.targetVariant) {
+        const variantRing = this.add.graphics();
+        variantRing.lineStyle(3, PETAL_VARIANT_COLOR_MAP[goal.targetVariant], 0.9);
+        variantRing.strokeCircle(-270, 35, 20);
+        this.activeGoalDisplay.add(variantRing);
+      }
+      this.activeGoalDisplay.add(goalDot);
+
+      const goalName = this.add.text(-240, 22, `${goalEmoji} ${goal.name}`, {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '20px',
+        color: goal.completed ? '#86efac' : '#fde68a',
+        fontStyle: 'bold'
+      }).setOrigin(0, 0.5);
+      this.activeGoalDisplay.add(goalName);
+
+      const goalDesc = this.add.text(-240, 52, goal.description, {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '14px',
+        color: '#a78bfa'
+      }).setOrigin(0, 0.5);
+      this.activeGoalDisplay.add(goalDesc);
+
+      const progress = goal.targetCount > 0 ? Math.min(goal.currentCount / goal.targetCount, 1) : 0;
+      const progressBg = this.add.graphics();
+      progressBg.fillStyle(0x4c1d95, 0.8);
+      progressBg.fillRoundedRect(-240, 72, 380, 18, 9);
+      this.activeGoalDisplay.add(progressBg);
+
+      const progressFill = this.add.graphics();
+      const fillColor = goal.completed ? 0x34d399 : 0xfbbf24;
+      progressFill.fillStyle(fillColor, 1);
+      progressFill.fillRoundedRect(-240, 72, 380 * progress, 18, 9);
+      this.activeGoalDisplay.add(progressFill);
+
+      const progressText = this.add.text(-50, 81, `${goal.currentCount}/${goal.targetCount} ${goal.completed ? '✓ 完成' : ''}`, {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '13px',
+        color: '#fef3c7',
+        fontStyle: 'bold'
+      }).setOrigin(0.5);
+      this.activeGoalDisplay.add(progressText);
+
+      const selectBtn = this.add.container(220, 55);
+      const selectBg = this.add.graphics();
+      selectBg.fillStyle(0x7c3aed, 0.9);
+      selectBg.fillRoundedRect(-60, -22, 120, 44, 22);
+      selectBg.lineStyle(2, 0xfbbf24, 0.8);
+      selectBg.strokeRoundedRect(-60, -22, 120, 44, 22);
+      selectBtn.add(selectBg);
+      const selectText = this.add.text(0, 0, '切换目标', {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '16px',
+        color: '#fde68a',
+        fontStyle: 'bold'
+      }).setOrigin(0.5);
+      selectBtn.add(selectText);
+      selectBtn.setSize(120, 44);
+      selectBtn.setInteractive();
+      selectBtn.on('pointerdown', () => this.toggleGoalSelector());
+      this.activeGoalDisplay.add(selectBtn);
+    }
+  }
+
+  private renderShortageItems(): void {
+    this.shortageContainer.removeAll(true);
+
+    const title = this.add.text(-300, 0, '📦 缺失材料提示', {
+      fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+      fontSize: '20px',
+      color: '#fde68a',
+      fontStyle: 'bold'
+    }).setOrigin(0, 0.5);
+    this.shortageContainer.add(title);
+
+    const data = this.synthesisSystem.getTargetTrackingData();
+    const shortages = data.materialShortages.slice(0, 4);
+
+    if (shortages.length === 0) {
+      const okText = this.add.text(0, 50, '✨ 材料充足，快去合成吧！', {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '16px',
+        color: '#86efac'
+      }).setOrigin(0.5);
+      this.shortageContainer.add(okText);
+      return;
+    }
+
+    shortages.forEach((s, i) => {
+      const rowY = 40 + i * 40;
+      const color = PETAL_COLOR_MAP[s.color];
+
+      const rowBg = this.add.graphics();
+      rowBg.fillStyle(s.critical ? 0x7f1d1d : 0x312e81, s.critical ? 0.7 : 0.6);
+      rowBg.fillRoundedRect(-300, rowY - 16, 600, 32, 10);
+      if (s.critical) {
+        rowBg.lineStyle(2, 0xf87171, 0.8);
+        rowBg.strokeRoundedRect(-300, rowY - 16, 600, 32, 10);
+      }
+      this.shortageContainer.add(rowBg);
+
+      const dot = this.add.graphics();
+      dot.fillStyle(color, 1);
+      dot.fillCircle(-275, rowY, 10);
+      this.shortageContainer.add(dot);
+
+      const nameText = this.add.text(-255, rowY, `${PETAL_TIER_NAMES[s.tier]}(${s.color})`, {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '14px',
+        color: '#fef3c7'
+      }).setOrigin(0, 0.5);
+      this.shortageContainer.add(nameText);
+
+      const statusText = this.add.text(180, rowY, `${s.current}/${s.required}`, {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '14px',
+        color: s.critical ? '#fca5a5' : '#fde68a',
+        fontStyle: 'bold'
+      }).setOrigin(1, 0.5);
+      this.shortageContainer.add(statusText);
+
+      const deficitText = this.add.text(260, rowY, `还差${s.deficit}个`, {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '13px',
+        color: s.critical ? '#f87171' : '#a78bfa',
+        fontStyle: 'bold'
+      }).setOrigin(0.5);
+      this.shortageContainer.add(deficitText);
+    });
+  }
+
+  private renderRecentOutputs(): void {
+    this.recentOutputContainer.removeAll(true);
+
+    const title = this.add.text(-300, 0, '💎 最近产出记录', {
+      fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+      fontSize: '20px',
+      color: '#fde68a',
+      fontStyle: 'bold'
+    }).setOrigin(0, 0.5);
+    this.recentOutputContainer.add(title);
+
+    const possibleText = this.add.text(300, 0, `可合成: ${this.synthesisSystem.calculateTotalSynthesisPossible()}次`, {
+      fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+      fontSize: '14px',
+      color: '#86efac'
+    }).setOrigin(1, 0.5);
+    this.recentOutputContainer.add(possibleText);
+
+    const outputs = this.synthesisSystem.getRecentOutputs().slice(0, 5);
+
+    if (outputs.length === 0) {
+      const emptyText = this.add.text(0, 50, '暂无产出记录，快去合成吧！', {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '15px',
+        color: '#a78bfa'
+      }).setOrigin(0.5);
+      this.recentOutputContainer.add(emptyText);
+      return;
+    }
+
+    outputs.forEach((o, i) => {
+      const rowY = 40 + i * 34;
+      const color = PETAL_COLOR_MAP[o.color];
+
+      const dot = this.add.graphics();
+      dot.fillStyle(color, 1);
+      dot.fillCircle(-285, rowY, 9);
+      if (o.variant) {
+        const ring = this.add.graphics();
+        ring.lineStyle(2.5, PETAL_VARIANT_COLOR_MAP[o.variant], 0.9);
+        ring.strokeCircle(-285, rowY, 14);
+        this.recentOutputContainer.add(ring);
+      }
+      this.recentOutputContainer.add(dot);
+
+      const name = o.variant
+        ? `${PETAL_VARIANT_EMOJI[o.variant]} ${PETAL_TIER_NAMES[o.tier]}(${o.color})`
+        : `${PETAL_TIER_NAMES[o.tier]}(${o.color})`;
+      const nameText = this.add.text(-260, rowY, name, {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '14px',
+        color: '#fef3c7'
+      }).setOrigin(0, 0.5);
+      this.recentOutputContainer.add(nameText);
+
+      const countText = this.add.text(50, rowY, `×${o.count}`, {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '14px',
+        color: '#fde68a',
+        fontStyle: 'bold'
+      }).setOrigin(0.5);
+      this.recentOutputContainer.add(countText);
+
+      const scoreText = this.add.text(160, rowY, `+${o.scoreGain}分`, {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '13px',
+        color: '#fbbf24'
+      }).setOrigin(0.5);
+      this.recentOutputContainer.add(scoreText);
+
+      const progressText = this.add.text(260, rowY, `+${o.progressGain}%`, {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '13px',
+        color: '#f472b6'
+      }).setOrigin(0.5);
+      this.recentOutputContainer.add(progressText);
+
+      const timeAgo = Math.floor((Date.now() - o.timestamp) / 1000);
+      const timeText = timeAgo < 60 ? `${timeAgo}秒前` : `${Math.floor(timeAgo / 60)}分钟前`;
+      const timeLabel = this.add.text(300, rowY, timeText, {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '11px',
+        color: '#a78bfa'
+      }).setOrigin(1, 0.5);
+      this.recentOutputContainer.add(timeLabel);
+    });
+  }
+
+  private renderRecommendedRoutes(): void {
+    this.routeContainer.removeAll(true);
+
+    const title = this.add.text(-300, 0, '🧭 推荐合成路线', {
+      fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+      fontSize: '20px',
+      color: '#fde68a',
+      fontStyle: 'bold'
+    }).setOrigin(0, 0.5);
+    this.routeContainer.add(title);
+
+    const routes = this.synthesisSystem.getTargetTrackingData().recommendedRoutes.slice(0, 3);
+
+    if (routes.length === 0) {
+      const emptyText = this.add.text(0, 50, '暂无推荐路线，继续收集花瓣吧！', {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '15px',
+        color: '#a78bfa'
+      }).setOrigin(0.5);
+      this.routeContainer.add(emptyText);
+      return;
+    }
+
+    const tagColors: Record<string, number> = {
+      fast: 0xfbbf24,
+      efficient: 0x34d399,
+      rare: 0xf472b6,
+      balanced: 0x60a5fa
+    };
+    const tagNames: Record<string, string> = {
+      fast: '快速',
+      efficient: '高效',
+      rare: '稀有',
+      balanced: '追踪'
+    };
+
+    routes.forEach((route, i) => {
+      const cardX = -290 + i * 200;
+      const tagColor = tagColors[route.tag] || 0xa78bfa;
+
+      const cardBg = this.add.graphics();
+      cardBg.fillStyle(0x312e81, 0.85);
+      cardBg.fillRoundedRect(cardX, 30, 185, 170, 14);
+      cardBg.lineStyle(2, tagColor, 0.7);
+      cardBg.strokeRoundedRect(cardX, 30, 185, 170, 14);
+      this.routeContainer.add(cardBg);
+
+      const tagBg = this.add.graphics();
+      tagBg.fillStyle(tagColor, 0.95);
+      tagBg.fillRoundedRect(cardX + 10, 42, 56, 22, 11);
+      this.routeContainer.add(tagBg);
+
+      const tagText = this.add.text(cardX + 38, 53, tagNames[route.tag] || '推荐', {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '12px',
+        color: '#1e1b4b',
+        fontStyle: 'bold'
+      }).setOrigin(0.5);
+      this.routeContainer.add(tagText);
+
+      const feasText = this.add.text(cardX + 175, 53, `${Math.floor(route.feasibility * 100)}%`, {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '12px',
+        color: '#86efac'
+      }).setOrigin(1, 0.5);
+      this.routeContainer.add(feasText);
+
+      const nameText = this.add.text(cardX + 15, 80, route.name, {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '16px',
+        color: '#fde68a',
+        fontStyle: 'bold'
+      }).setOrigin(0, 0.5);
+      this.routeContainer.add(nameText);
+
+      let stepY = 105;
+      route.steps.slice(0, 3).forEach((step, si) => {
+        const stepIcon = step.action === 'collect' ? '🌸' : step.action === 'synthesize' ? '⚗️' : step.action === 'mutate' ? '🧬' : '🌈';
+        const stepText = this.add.text(cardX + 15, stepY, `${stepIcon} ${step.description}`, {
+          fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+          fontSize: '11px',
+          color: '#c4b5fd'
+        }).setOrigin(0, 0.5);
+        this.routeContainer.add(stepText);
+        stepY += 18;
+      });
+
+      const scoreInfo = this.add.text(cardX + 15, 180, `预计 +${route.totalEstimatedScore}分`, {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '13px',
+        color: '#fbbf24',
+        fontStyle: 'bold'
+      }).setOrigin(0, 0.5);
+      this.routeContainer.add(scoreInfo);
+
+      const progressInfo = this.add.text(cardX + 175, 180, `+${route.totalEstimatedProgress}%`, {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '12px',
+        color: '#f472b6'
+      }).setOrigin(1, 0.5);
+      this.routeContainer.add(progressInfo);
+    });
+  }
+
+  private renderGoalSelector(): void {
+    this.goalSelectorContainer.each((child: Phaser.GameObjects.GameObject) => {
+      if (child.type !== 'Graphics' || !this.goalSelectorContainer.list.slice(0, 2).includes(child)) {
+        if (child !== this.goalSelectorContainer.list[0] && child !== this.goalSelectorContainer.list[1] && child !== this.goalSelectorContainer.list[2]) {
+          child.destroy();
+        }
+      }
+    });
+
+    const data = this.synthesisSystem.getTargetTrackingData();
+    const goals = data.availableGoals.slice(0, 8);
+
+    goals.forEach((goal, i) => {
+      const col = i % 2;
+      const row = Math.floor(i / 2);
+      const cardX = -270 + col * 280;
+      const cardY = -200 + row * 100;
+
+      const isActive = data.activeGoal?.id === goal.id;
+      const cardBg = this.add.graphics();
+      cardBg.fillStyle(isActive ? 0x7c3aed : 0x312e81, 0.9);
+      cardBg.fillRoundedRect(cardX, cardY, 260, 85, 14);
+      cardBg.lineStyle(2, goal.completed ? 0x34d399 : (isActive ? 0xfbbf24 : 0x6366f1), goal.completed || isActive ? 0.9 : 0.5);
+      cardBg.strokeRoundedRect(cardX, cardY, 260, 85, 14);
+      this.goalSelectorContainer.add(cardBg);
+
+      const goalColor = goal.targetColor ? PETAL_COLOR_MAP[goal.targetColor] : 0xfbbf24;
+      const dot = this.add.graphics();
+      dot.fillStyle(goalColor, 1);
+      dot.fillCircle(cardX + 25, cardY + 30, 11);
+      if (goal.targetVariant) {
+        const ring = this.add.graphics();
+        ring.lineStyle(2.5, PETAL_VARIANT_COLOR_MAP[goal.targetVariant], 0.9);
+        ring.strokeCircle(cardX + 25, cardY + 30, 16);
+        this.goalSelectorContainer.add(ring);
+      }
+      this.goalSelectorContainer.add(dot);
+
+      const goalEmoji = goal.type === 'tier' ? '⭐' : goal.type === 'rainbow' ? '🌈' : goal.type === 'variant' ? '🧬' : '🎯';
+      const nameText = this.add.text(cardX + 50, cardY + 20, `${goalEmoji} ${goal.name}`, {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '15px',
+        color: goal.completed ? '#86efac' : '#fef3c7',
+        fontStyle: 'bold'
+      }).setOrigin(0, 0.5);
+      this.goalSelectorContainer.add(nameText);
+
+      const descText = this.add.text(cardX + 50, cardY + 45, goal.description, {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '11px',
+        color: '#a78bfa'
+      }).setOrigin(0, 0.5);
+      this.goalSelectorContainer.add(descText);
+
+      const progress = goal.targetCount > 0 ? Math.min(goal.currentCount / goal.targetCount, 1) : 0;
+      const pBg = this.add.graphics();
+      pBg.fillStyle(0x1e1b4b, 0.8);
+      pBg.fillRoundedRect(cardX + 50, cardY + 60, 160, 12, 6);
+      this.goalSelectorContainer.add(pBg);
+      const pFill = this.add.graphics();
+      pFill.fillStyle(goal.completed ? 0x34d399 : 0xfbbf24, 1);
+      pFill.fillRoundedRect(cardX + 50, cardY + 60, 160 * progress, 12, 6);
+      this.goalSelectorContainer.add(pFill);
+
+      const pText = this.add.text(cardX + 225, cardY + 66, `${goal.currentCount}/${goal.targetCount}`, {
+        fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+        fontSize: '11px',
+        color: '#fde68a',
+        fontStyle: 'bold'
+      }).setOrigin(1, 0.5);
+      this.goalSelectorContainer.add(pText);
+
+      if (isActive) {
+        const activeBadge = this.add.text(cardX + 240, cardY + 15, '当前', {
+          fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+          fontSize: '10px',
+          color: '#1e1b4b',
+          backgroundColor: '#fbbf24',
+          padding: { x: 6, y: 2 },
+          fontStyle: 'bold'
+        }).setOrigin(1, 0.5);
+        this.goalSelectorContainer.add(activeBadge);
+      }
+
+      const hitArea = this.add.graphics();
+      hitArea.fillStyle(0x000000, 0.01);
+      hitArea.fillRect(cardX, cardY, 260, 85);
+      this.goalSelectorContainer.add(hitArea);
+      hitArea.setInteractive(
+        new Phaser.Geom.Rectangle(cardX, cardY, 260, 85),
+        Phaser.Geom.Rectangle.Contains
+      );
+      hitArea.on('pointerdown', () => this.onGoalSelect(goal.id));
+    });
+
+    const closeSelectorBtn = this.add.container(0, 250);
+    const closeBg = this.add.graphics();
+    closeBg.fillStyle(0x7c3aed, 0.95);
+    closeBg.fillRoundedRect(-90, -25, 180, 50, 25);
+    closeBg.lineStyle(2, 0xfbbf24, 0.9);
+    closeBg.strokeRoundedRect(-90, -25, 180, 50, 25);
+    closeSelectorBtn.add(closeBg);
+    const closeText = this.add.text(0, 0, '关闭选择', {
+      fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
+      fontSize: '18px',
+      color: '#fde68a',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    closeSelectorBtn.add(closeText);
+    closeSelectorBtn.setSize(180, 50);
+    closeSelectorBtn.setInteractive();
+    closeSelectorBtn.on('pointerdown', () => this.toggleGoalSelector());
+    this.goalSelectorContainer.add(closeSelectorBtn);
+  }
+
+  private updateTargetTrackingDisplay(): void {
+    this.renderActiveGoal();
+    this.renderShortageItems();
+    this.renderRecentOutputs();
+    this.renderRecommendedRoutes();
   }
 }

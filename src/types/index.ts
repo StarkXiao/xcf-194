@@ -1070,3 +1070,67 @@ export interface CrossFadeTask {
   duration: number;
   onComplete?: () => void;
 }
+
+export type TargetType = 'tier' | 'color' | 'variant' | 'rainbow' | 'custom';
+
+export interface TargetGoal {
+  id: string;
+  type: TargetType;
+  name: string;
+  description: string;
+  targetTier?: PetalTier;
+  targetColor?: PetalColor;
+  targetVariant?: PetalVariant;
+  targetCount: number;
+  currentCount: number;
+  priority: number;
+  completed: boolean;
+}
+
+export interface MaterialShortage {
+  tier: PetalTier;
+  color: PetalColor;
+  variant?: PetalVariant;
+  required: number;
+  current: number;
+  deficit: number;
+  critical: boolean;
+}
+
+export interface RecentOutput {
+  tier: PetalTier;
+  color: PetalColor;
+  variant?: PetalVariant;
+  count: number;
+  timestamp: number;
+  scoreGain: number;
+  progressGain: number;
+}
+
+export interface RouteStep {
+  description: string;
+  action: 'collect' | 'synthesize' | 'mutate' | 'rainbow';
+  color?: PetalColor;
+  tier?: PetalTier;
+  targetCount: number;
+  estimatedScore: number;
+}
+
+export interface RecommendedRoute {
+  id: string;
+  name: string;
+  steps: RouteStep[];
+  totalEstimatedScore: number;
+  totalEstimatedProgress: number;
+  feasibility: number;
+  tag: 'fast' | 'efficient' | 'rare' | 'balanced';
+}
+
+export interface TargetTrackingData {
+  activeGoal: TargetGoal | null;
+  availableGoals: TargetGoal[];
+  materialShortages: MaterialShortage[];
+  recentOutputs: RecentOutput[];
+  recommendedRoutes: RecommendedRoute[];
+  totalSynthesisPossible: number;
+}
